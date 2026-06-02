@@ -65,7 +65,7 @@ app.get("/", (req, res) => {
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RG-MAXX API v3</title>
+<title>RG-----raj API v3</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#c9d1d9;padding:24px;max-width:960px;margin:auto}
@@ -86,7 +86,7 @@ pre{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;f
 </style>
 </head>
 <body>
-<h1>⚡ RG-MAXX API <span style="font-size:1rem;color:#8957e5">v3</span></h1>
+<h1>⚡ RG-raj API <span style="font-size:1rem;color:#8957e5">v3</span></h1>
 <p class="sub">RG Vikramjeet Course Proxy — Manual Users + Dynamic Login + Telegram Bot</p>
 
 <div class="status-bar">
