@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: rg-maxx-api
+    env: node
+    region: singapore  # India ke closest
+    plan: free
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false   # Render dashboard pe manually set karo
+      - key: TELEGRAM_LOG_CHANNEL_ID
+        sync: false
+      - key: ADMIN_SECRET
+        sync: false
+    healthCheckPath: /api/health
+    autoDeploy: true
