@@ -1,4 +1,4 @@
-// server.js — RG-MAXX API v11.1
+// server.js — RG-MAXX API v11.2.2
 // ✅ FULL token in Telegram logs
 // ✅ Auto batch add from users.js
 // ✅ God-level Android app UI
@@ -90,7 +90,7 @@ app.get("/", (req, res) => {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>RG-MAXX API v11.1</title>
+<title>RG-MAXX API v11.2.2</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -905,19 +905,20 @@ async function loadBatches() {
 }
 
 function batchCard(b) {
-  const expiry=b.expiry?new Date(b.expiry).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'';
-  const thumbHtml=b.thumbnail
-    ?`<img class="batch-thumb" src="${b.thumbnail}" alt="" loading="lazy" onerror="this.style.display='none';this.nextSibling.style.display='flex'">`
+  var expiry=b.expiry?new Date(b.expiry).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'';
+  var thumbHtml=b.thumbnail
+    ?'<img class="batch-thumb" src="'+b.thumbnail+'" alt="" loading="lazy" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'flex\'">'
     :'';
-  const phDisplay=b.thumbnail?'style="display:none"':'';
-  return `<div class="batch-card">
-    ${thumbHtml}<div class="batch-thumb-ph" ${phDisplay}>📚</div>
-    <div class="batch-info">
-      <div class="batch-id">ID: ${b.id}</div>
-      <div class="batch-name">${b.name||'Unknown Batch'}</div>
-      ${expiry?`<div class="batch-exp"><div class="exp-dot"></div>${expiry}</div>`:''}
-    </div>
-  </div>`;
+  var phDisplay=b.thumbnail?'style="display:none"':'';
+  var expiryHtml=expiry?'<div class="batch-exp"><div class="exp-dot"></div>'+expiry+'</div>':'';
+  return '<div class="batch-card">'
+    +thumbHtml+'<div class="batch-thumb-ph" '+phDisplay+'>\u{1F4DA}</div>'
+    +'<div class="batch-info">'
+    +'<div class="batch-id">ID: '+b.id+'</div>'
+    +'<div class="batch-name">'+(b.name||'Unknown Batch')+'</div>'
+    +expiryHtml
+    +'</div>'
+    +'</div>';
 }
 
 // ── LOAD USERS ───────────────────────────────────────────────────────────────
@@ -935,23 +936,23 @@ async function loadUsers() {
       const av=(u.name||u.userId||'?')[0].toUpperCase();
       const cls=srcCls[u.source]||'src-api';
       const addedDate=u.addedAt?new Date(u.addedAt).toLocaleDateString('en-IN'):'—';
-      return `<div class="user-card">
-        <div class="user-top">
-          <div class="user-avatar">${av}</div>
-          <div><div class="user-name">${u.name||'User '+u.userId}</div><div class="user-id">${u.userId}</div></div>
-          <span class="src-badge ${cls}">${u.source||'api'}</span>
-        </div>
-        <div class="token-row">
-          <div class="token-text" id="tk-${i}">${u.tokenPreview}</div>
-          <button class="copy-btn" onclick="copyToken(${i},'${u.tokenFull||u.tokenPreview}')">Copy</button>
-        </div>
-        <div class="user-meta">
-          <div class="meta-pill">📚 <strong>${u.batchCount}</strong> batches</div>
-          <div class="meta-pill">📅 <strong>${addedDate}</strong></div>
-          <div class="meta-pill">🔖 <strong>${u.source}</strong></div>
-        </div>
-        <div class="health-bar"><div class="health-fill" style="width:100%"></div></div>
-      </div>`;
+      return '<div class="user-card">'
++'        <div class="user-top">'
++'          <div class="user-avatar">'+(av)+'</div>'
++'          <div><div class="user-name">'+(u.name||"User "+u.userId)+'</div><div class="user-id">'+(u.userId)+'</div></div>'
++'          <span class="src-badge '+(cls)+'">'+(u.source||"api")+'</span>'
++'        </div>'
++'        <div class="token-row">'
++'          <div class="token-text" id="tk-'+(i)+'">'+(u.tokenPreview)+'</div>'
++'          <button class="copy-btn" data-idx="'+(i)+'" data-token="'+(u.tokenFull||u.tokenPreview)+'" onclick="copyToken(parseInt(this.dataset.idx),this.dataset.token)">Copy</button>'
++'        </div>'
++'        <div class="user-meta">'
++'          <div class="meta-pill">📚 <strong>'+(u.batchCount)+'</strong> batches</div>'
++'          <div class="meta-pill">📅 <strong>'+(addedDate)+'</strong></div>'
++'          <div class="meta-pill">🔖 <strong>'+(u.source)+'</strong></div>'
++'        </div>'
++'        <div class="health-bar"><div class="health-fill" style="width:100%"></div></div>'
++'      </div>';
     }).join('')+'</div>';
   } catch(e){
     el.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div>Error loading users.</div></div>';
@@ -987,21 +988,21 @@ async function loadTelegram() {
     } else {
       tcEl.innerHTML='<div class="user-list">'+data.tokens.map((t,i)=>{
         const av=(t.userId||'?')[0].toUpperCase();
-        return `<div class="user-card">
-          <div class="user-top">
-            <div class="user-avatar" style="background:linear-gradient(135deg,#00e5ff,#4f8ef7)">${av}</div>
-            <div><div class="user-name">${t.name||'User '+t.userId}</div><div class="user-id">${t.userId}</div></div>
-            <span class="src-badge src-telegram">TG</span>
-          </div>
-          <div class="token-row">
-            <div class="token-text">${t.tokenPreview}</div>
-            <button class="copy-btn" onclick="copyFull('${t.tokenFull||t.tokenPreview}',this)">Copy</button>
-          </div>
-          <div class="user-meta">
-            <div class="meta-pill">📚 <strong>${t.batchCount}</strong> batches</div>
-            <div class="meta-pill">📅 ${t.addedAt?new Date(t.addedAt).toLocaleDateString('en-IN'):'—'}</div>
-          </div>
-        </div>`;
+        return '<div class="user-card">'
++'          <div class="user-top">'
++'            <div class="user-avatar" style="background:linear-gradient(135deg,#00e5ff,#4f8ef7)">'+(av)+'</div>'
++'            <div><div class="user-name">'+(t.name||"User "+t.userId)+'</div><div class="user-id">'+(t.userId)+'</div></div>'
++'            <span class="src-badge src-telegram">TG</span>'
++'          </div>'
++'          <div class="token-row">'
++'            <div class="token-text">'+(t.tokenPreview)+'</div>'
++'            <button class="copy-btn" data-token="'+(t.tokenFull||t.tokenPreview)+'" onclick="copyFull(this.dataset.token,this)">Copy</button>'
++'          </div>'
++'          <div class="user-meta">'
++'            <div class="meta-pill">📚 <strong>'+(t.batchCount)+'</strong> batches</div>'
++'            <div class="meta-pill">📅 '+(t.addedAt?new Date(t.addedAt).toLocaleDateString("en-IN"):"—")+'</div>'
++'          </div>'
++'        </div>';
       }).join('')+'</div>';
     }
 
@@ -1016,15 +1017,15 @@ async function loadTelegram() {
         const t=new Date(l.timestamp);
         const timeStr=t.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})+' '+t.toLocaleDateString('en-IN',{day:'2-digit',month:'short'});
         const cls=srcCls[l.source]||'src-login';
-        return `<div class="log-entry source-${l.source}">
-          <div class="log-top">
-            <span class="log-uid">${l.userId}</span>
-            <span class="src-badge ${cls}" style="font-size:.55rem">${srcLabel[l.source]||l.source}</span>
-            <span class="log-time">${timeStr}</span>
-          </div>
-          <div class="log-token">${l.tokenPreview}</div>
-          <div class="log-batches">📚 ${l.batchCount} batches ${l.extraInfo?'• '+l.extraInfo:''}</div>
-        </div>`;
+        return '<div class="log-entry source-'+(l.source)+'">'
++'          <div class="log-top">'
++'            <span class="log-uid">'+(l.userId)+'</span>'
++'            <span class="src-badge '+(cls)+'" style="font-size:.55rem">'+(srcLabel[l.source]||l.source)+'</span>'
++'            <span class="log-time">'+(timeStr)+'</span>'
++'          </div>'
++'          <div class="log-token">'+(l.tokenPreview)+'</div>'
++'          <div class="log-batches">📚 '+(l.batchCount)+' batches '+(l.extraInfo?'• '+l.extraInfo:'')+'</div>'
++'        </div>';
       }).join('')+'</div>';
     }
   } catch(e){
@@ -1054,21 +1055,21 @@ async function loadHealth() {
       const clr=h.failures===0?'var(--green)':h.failures<3?'var(--yellow)':'var(--red)';
       const w=Math.max(0,100-h.failures*34);
       const icon=h.failures===0?'🟢':h.failures<3?'🟡':'🔴';
-      return `<div class="health-card">
-        <div class="health-top">
-          <div class="health-status-icon" style="background:${clr}22">${icon}</div>
-          <div style="flex:1">
-            <div style="font-size:.85rem;font-weight:700;color:var(--text)">${h.name||'User '+h.userId}</div>
-            <div style="font-size:.68rem;color:var(--muted)">${h.userId}</div>
-          </div>
-          <span class="src-badge" style="color:${clr};border-color:${clr}33;background:${clr}11">${h.status}</span>
-        </div>
-        <div class="health-meta">
-          <span>❌ Failures: <strong style="color:${clr}">${h.failures}/3</strong></span>
-          <span>Source: ${h.source}</span>
-        </div>
-        <div class="health-bar"><div class="health-fill" style="width:${w}%;background:${clr}"></div></div>
-      </div>`;
+      return '<div class="health-card">'
++'        <div class="health-top">'
++'          <div class="health-status-icon" style="background:'+(clr)+'22">'+(icon)+'</div>'
++'          <div style="flex:1">'
++'            <div style="font-size:.85rem;font-weight:700;color:var(--text)">'+(h.name||'User '+h.userId)+'</div>'
++'            <div style="font-size:.68rem;color:var(--muted)">'+(h.userId)+'</div>'
++'          </div>'
++'          <span class="src-badge" style="color:'+(clr)+';border-color:'+(clr)+'33;background:'+(clr)+'11">'+(h.status)+'</span>'
++'        </div>'
++'        <div class="health-meta">'
++'          <span>❌ Failures: <strong style="color:'+(clr)+'">'+(h.failures)+'/3</strong></span>'
++'          <span>Source: '+(h.source)+'</span>'
++'        </div>'
++'        <div class="health-bar"><div class="health-fill" style="width:'+(w)+'%;background:'+(clr)+'"></div></div>'
++'      </div>';
     }).join('')+'</div>';
   } catch(e){
     el.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div>Error loading health.</div></div>';
@@ -1120,7 +1121,7 @@ setInterval(initStats, 30000);
 // ══════════════════════════════════════════════════════════════════════════════
 app.get("/api/status", (req, res) => {
   res.json({
-    status: "RG-MAXX API v11.1 Online",
+    status: "RG-MAXX API v11.2.2 Online",
     version: "v10",
     tokens: getTokenCount(),
     manual_users_defined: MANUAL_USERS.filter(u => u.token && !u.token.startsWith("TOKEN_")).length,
@@ -1528,7 +1529,7 @@ if (!IS_VERCEL) {
   // Render / Local mode
   loadManualUsers().then(() => {
     app.listen(PORT, () => {
-      console.log(`✅ RG-MAXX API v11.1 on port ${PORT}`);
+      console.log(`✅ RG-MAXX API v11.2.2 on port ${PORT}`);
       console.log(`📖 Dashboard: http://localhost:${PORT}/`);
       console.log(`🤖 Telegram: ${process.env.TELEGRAM_BOT_TOKEN ? "configured ✅" : "NOT configured ❌"}`);
       console.log(`✨ V11: Vercel + Render dual deploy | Zero crash`);
@@ -1538,7 +1539,7 @@ if (!IS_VERCEL) {
     console.error("❌ Boot failed:", err.message);
     // Render ke liye bhi listen karo even if loadManualUsers fails
     app.listen(PORT, () => {
-      console.log(`⚠️ RG-MAXX API v11.1 started (manual users failed to load)`);
+      console.log(`⚠️ RG-MAXX API v11.2.2 started (manual users failed to load)`);
     });
   });
 } else {
