@@ -40,21 +40,27 @@ app.use((req, res, next) => {
 // BOOT
 // ══════════════════════════════════════════════════════════════════════════════
 async function loadManualUsers() {
-  console.log(`\n📋 Loading ${MANUAL_USERS.length} users from users.js...`);
-  let loaded = 0;
-  for (const u of MANUAL_USERS) {
-    if (!u.userId || !u.token) continue;
-    if (u.token.startsWith("TOKEN_") && u.token.endsWith("_YAHAN_PASTE_KARO")) continue;
-    try {
+  const valid = MANUAL_USERS.filter(
+    (u) =>
+      u.userId &&
+      u.token &&
+      !(u.token.startsWith("TOKEN_") && u.token.endsWith("_YAHAN_PASTE_KARO"))
+  );
+  console.log(`\n📋 Loading ${valid.length} users from users.js (PARALLEL)...`);
+
+  const results = await Promise.allSettled(
+    valid.map(async (u) => {
       const batches = await fetchUserBatches(u.userId, u.token);
       addToken(u.userId, u.token, u.name || "", batches, "manual");
       console.log(`  ✅ ${u.name || u.userId} — ${batches.length} batches`);
-      loaded++;
-    } catch (err) {
-      console.log(`  ❌ ${u.userId} — ${err.message}`);
-    }
-  }
-  console.log(`✅ ${loaded}/${MANUAL_USERS.length} loaded\n`);
+      return u.userId;
+    })
+  );
+
+  const loaded = results.filter((r) => r.status === "fulfilled").length;
+  const failed = results.filter((r) => r.status === "rejected");
+  failed.forEach((r, i) => console.log(`  ❌ ${valid[i]?.userId} — ${r.reason?.message || r.reason}`));
+  console.log(`✅ ${loaded}/${valid.length} loaded\n`);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -829,25 +835,33 @@ app.get("/api/reload-users", async (req, res) => {
   if (process.env.ADMIN_SECRET && secret !== process.env.ADMIN_SECRET) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  let loaded = 0, skipped = 0;
-  const results = [];
-  for (const u of MANUAL_USERS) {
-    if (!u.userId || !u.token) { skipped++; continue; }
-    if (u.token.startsWith("TOKEN_") && u.token.endsWith("_YAHAN_PASTE_KARO")) {
-      skipped++;
-      results.push({ userId: u.userId, status: "placeholder_skipped" });
-      continue;
-    }
-    try {
+
+  const valid = MANUAL_USERS.filter(
+    (u) =>
+      u.userId &&
+      u.token &&
+      !(u.token.startsWith("TOKEN_") && u.token.endsWith("_YAHAN_PASTE_KARO"))
+  );
+  const skippedPlaceholders = MANUAL_USERS.length - valid.length;
+
+  // Parallel load — sab ek saath
+  const settled = await Promise.allSettled(
+    valid.map(async (u) => {
       const batches = await fetchUserBatches(u.userId, u.token);
       addToken(u.userId, u.token, u.name || "", batches, "manual");
-      loaded++;
-      results.push({ userId: u.userId, name: u.name, status: "loaded", batchCount: batches.length });
-    } catch (err) {
-      skipped++;
-      results.push({ userId: u.userId, name: u.name, status: "error", error: err.message });
-    }
-  }
+      return { userId: u.userId, name: u.name, status: "loaded", batchCount: batches.length };
+    })
+  );
+
+  const results = settled.map((r, i) =>
+    r.status === "fulfilled"
+      ? r.value
+      : { userId: valid[i]?.userId, name: valid[i]?.name, status: "error", error: r.reason?.message || String(r.reason) }
+  );
+
+  const loaded = results.filter((r) => r.status === "loaded").length;
+  const skipped = skippedPlaceholders + results.filter((r) => r.status === "error").length;
+
   res.json({ success: true, loaded, skipped, totalInPool: getTokenCount(), results });
 });
 
