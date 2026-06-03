@@ -72,7 +72,7 @@ app.get("/", (req, res) => {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RG-MAXX API v5</title>
+<title>RG-MAXX API v7</title>
 <style>
 :root{
   --bg:#06090f;
@@ -468,6 +468,7 @@ footer{
   <!-- TABS -->
   <div class="tabs" id="tabs">
     <button class="tab active" onclick="switchTab('batches',this)">📚 All Batches</button>
+    <button class="tab" onclick="switchTab('explorer',this)">🔍 Explorer</button>
     <button class="tab" onclick="switchTab('users',this)">👥 Users Pool</button>
     <button class="tab" onclick="switchTab('health',this)">💓 Health</button>
     <button class="tab" onclick="switchTab('api',this)">📖 API Docs</button>
@@ -481,6 +482,37 @@ footer{
     </div>
     <div id="batches-container">
       <div class="loader"><div class="spin"></div> Loading batches...</div>
+    </div>
+  </div>
+
+  <!-- EXPLORER PANEL -->
+  <div class="panel" id="panel-explorer">
+    <div style="margin-bottom:16px">
+      <div class="section-title" style="margin:0 0 12px">🔍 Content Explorer</div>
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:16px">Batch → Subjects → Topics → Concepts → Videos/PDFs — sab ek jagah</div>
+      <div id="exp-breadcrumb" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:.78rem;margin-bottom:16px;min-height:22px"></div>
+    </div>
+    <div id="exp-batches-step">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <input id="exp-search" type="text" placeholder="🔎 Batch name ya ID search..." oninput="filterExpBatches()" style="flex:1;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:.82rem;outline:none">
+      </div>
+      <div id="exp-batches-grid" class="batch-grid"><div class="loader"><div class="spin"></div> Loading...</div></div>
+    </div>
+    <div id="exp-subjects-step" style="display:none">
+      <div class="section-title" style="font-size:.85rem;margin-bottom:12px">📖 Subjects</div>
+      <div id="exp-subjects-grid" class="user-grid"></div>
+    </div>
+    <div id="exp-topics-step" style="display:none">
+      <div class="section-title" style="font-size:.85rem;margin-bottom:12px">📝 Topics</div>
+      <div id="exp-topics-grid" class="user-grid"></div>
+    </div>
+    <div id="exp-concepts-step" style="display:none">
+      <div class="section-title" style="font-size:.85rem;margin-bottom:12px">💡 Concepts</div>
+      <div id="exp-concepts-grid" class="user-grid"></div>
+    </div>
+    <div id="exp-content-step" style="display:none">
+      <div class="section-title" style="font-size:.85rem;margin-bottom:12px">🎬 Videos &amp; PDFs</div>
+      <div id="exp-content-list"></div>
     </div>
   </div>
 
@@ -515,7 +547,7 @@ footer{
   <div class="panel" id="panel-api">
 
     <div class="info-box">
-      <h3>🆕 v5 — ID+Password Login</h3>
+      <h3>🆕 v7 — ID+Password Login</h3>
       <pre>// Option A — Mobile+Password
 POST /api/login
 { "mobile": "9876543210", "password": "yourpass" }
@@ -622,7 +654,7 @@ POST /api/login
 
 </div><!-- /main -->
 
-<footer>RG-MAXX API v5 &nbsp;•&nbsp; 24/7 KeepAlive &nbsp;•&nbsp; RG Vikramjeet Platform</footer>
+<footer>RG-MAXX API v7 &nbsp;•&nbsp; 24/7 KeepAlive &nbsp;•&nbsp; RG Vikramjeet Platform</footer>
 
 <script>
 // ── TAB SWITCH ──────────────────────────────────────────────────────────────
@@ -634,6 +666,7 @@ function switchTab(name, btn) {
   if (name === 'batches') loadBatches();
   if (name === 'users') loadUsers();
   if (name === 'health') loadHealth();
+  if (name === 'explorer') initExplorer();
 }
 
 // ── INIT STATS ───────────────────────────────────────────────────────────────
@@ -716,7 +749,7 @@ async function loadUsers() {
               <span class="source-tag \${cls}">\${u.source || 'api'}</span>
             </div>
             <div class="user-stat">📚 <strong>\${u.batchCount}</strong> batches &nbsp;|&nbsp; Added: \${addedDate}</div>
-            <div class="user-stat" style="margin-top:4px;font-size:.65rem;word-break:break-all;color:#374151">🔑 \${u.tokenPreview}</div>
+            <div class="user-stat" style="margin-top:4px;font-size:.65rem;word-break:break-all;color:var(--muted)">🔑 <span style="cursor:pointer;color:var(--accent2)" onclick="navigator.clipboard.writeText('\${u.fullToken||u.tokenPreview}').then(()=>alert('Token copied!'))" title="Click to copy full token">\${u.tokenPreview} 📋</span></div>
             <div class="health-bar"><div class="health-bar-fill" style="width:100%"></div></div>
           </div>\`;
       }).join('') +
@@ -761,6 +794,157 @@ async function loadHealth() {
   } catch(e) {
     el.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div>Error loading health data.</div></div>';
   }
+}
+
+
+// ── CONTENT EXPLORER ─────────────────────────────────────────────────────────
+let expAllBatches = [];
+let expState = { batchId: null, batchName: null, subjectId: null, subjectName: null, topicId: null, topicName: null, conceptId: null, conceptName: null };
+
+function expShowStep(step) {
+  ['batches','subjects','topics','concepts','content'].forEach(s => {
+    document.getElementById('exp-'+s+'-step').style.display = s===step ? '' : 'none';
+  });
+}
+
+function expSetBreadcrumb() {
+  const bc = document.getElementById('exp-breadcrumb');
+  const parts = [];
+  parts.push(`<span style="cursor:pointer;color:var(--accent)" onclick="expGoBack('batches')">📚 All Batches</span>`);
+  if (expState.batchName) parts.push(`<span style="color:var(--muted)">›</span><span style="cursor:pointer;color:var(--accent2)" onclick="expGoBack('subjects')">${expState.batchName}</span>`);
+  if (expState.subjectName) parts.push(`<span style="color:var(--muted)">›</span><span style="cursor:pointer;color:var(--accent2)" onclick="expGoBack('topics')">${expState.subjectName}</span>`);
+  if (expState.topicName) parts.push(`<span style="color:var(--muted)">›</span><span style="cursor:pointer;color:var(--accent2)" onclick="expGoBack('concepts')">${expState.topicName}</span>`);
+  if (expState.conceptName) parts.push(`<span style="color:var(--muted)">›</span><span style="color:var(--text)">${expState.conceptName}</span>`);
+  bc.innerHTML = parts.join(' ');
+}
+
+function expGoBack(to) {
+  if (to === 'batches') { expState = {batchId:null,batchName:null,subjectId:null,subjectName:null,topicId:null,topicName:null,conceptId:null,conceptName:null}; expSetBreadcrumb(); expShowStep('batches'); }
+  else if (to === 'subjects') { expState.subjectId=null;expState.subjectName=null;expState.topicId=null;expState.topicName=null;expState.conceptId=null;expState.conceptName=null; expSetBreadcrumb(); expShowStep('subjects'); }
+  else if (to === 'topics') { expState.topicId=null;expState.topicName=null;expState.conceptId=null;expState.conceptName=null; expSetBreadcrumb(); expShowStep('topics'); expLoadTopics(); }
+  else if (to === 'concepts') { expState.conceptId=null;expState.conceptName=null; expSetBreadcrumb(); expShowStep('concepts'); expLoadConcepts(); }
+}
+
+function expItemCard(icon, id, name, onclick) {
+  return `<div class="user-card" style="cursor:pointer" onclick="${onclick}">
+    <div class="user-top">
+      <div class="user-avatar" style="font-size:1.2rem;background:var(--surface)">${icon}</div>
+      <div><div class="user-name">${name}</div><div class="user-id">ID: ${id}</div></div>
+    </div>
+  </div>`;
+}
+
+async function initExplorer() {
+  expSetBreadcrumb();
+  expShowStep('batches');
+  const grid = document.getElementById('exp-batches-grid');
+  if (expAllBatches.length > 0) { renderExpBatches(); return; }
+  grid.innerHTML = '<div class="loader"><div class="spin"></div> Loading batches...</div>';
+  try {
+    const data = await fetch('/api/all-batches').then(r=>r.json());
+    expAllBatches = data.data || [];
+    renderExpBatches();
+  } catch(e) { grid.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div>Error loading batches.</div></div>'; }
+}
+
+function renderExpBatches() {
+  const q = (document.getElementById('exp-search').value||'').toLowerCase();
+  const list = q ? expAllBatches.filter(b => b.name.toLowerCase().includes(q) || String(b.id).includes(q)) : expAllBatches;
+  const grid = document.getElementById('exp-batches-grid');
+  if (!list.length) { grid.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div><div>No batches found.</div></div>'; return; }
+  grid.innerHTML = list.map(b => {
+    const thumb = b.thumbnail ? `<img class="batch-thumb" src="${b.thumbnail}" alt="${b.name}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">` : '';
+    const ph = `<div class="batch-thumb-placeholder" ${b.thumbnail?'style="display:none"':''}>📚</div>`;
+    return `<div class="batch-card" style="cursor:pointer" onclick="expSelectBatch('${b.id}','${b.name.replace(/'/g,"\\'")}')">
+      ${thumb}${ph}
+      <div class="batch-info">
+        <div class="batch-id">ID: ${b.id}</div>
+        <div class="batch-name">${b.name||'Unknown'}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function filterExpBatches() { renderExpBatches(); }
+
+async function expSelectBatch(id, name) {
+  expState.batchId = id; expState.batchName = name;
+  expState.subjectId=null;expState.subjectName=null;expState.topicId=null;expState.topicName=null;expState.conceptId=null;expState.conceptName=null;
+  expSetBreadcrumb(); expShowStep('subjects');
+  const grid = document.getElementById('exp-subjects-grid');
+  grid.innerHTML = '<div class="loader"><div class="spin"></div> Loading subjects...</div>';
+  try {
+    const data = await fetch('/api/subjects?courseid='+id).then(r=>r.json());
+    const subs = data.subjects || [];
+    if (!subs.length) { grid.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div>No subjects found.</div></div>'; return; }
+    grid.innerHTML = subs.map(s => expItemCard('📖', s.id, s.name, `expSelectSubject('${s.id}','${s.name.replace(/'/g,"\\'")}')`) ).join('');
+  } catch(e) { grid.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div>Error: '+e.message+'</div></div>'; }
+}
+
+async function expSelectSubject(id, name) {
+  expState.subjectId = id; expState.subjectName = name;
+  expState.topicId=null;expState.topicName=null;expState.conceptId=null;expState.conceptName=null;
+  expSetBreadcrumb(); expShowStep('topics');
+  await expLoadTopics();
+}
+
+async function expLoadTopics() {
+  const grid = document.getElementById('exp-topics-grid');
+  grid.innerHTML = '<div class="loader"><div class="spin"></div> Loading topics...</div>';
+  try {
+    const data = await fetch('/api/topics?courseid='+expState.batchId+'&subjectid='+expState.subjectId).then(r=>r.json());
+    const topics = data.topics || [];
+    if (!topics.length) { grid.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div>No topics found.</div></div>'; return; }
+    grid.innerHTML = topics.map(t => expItemCard('📝', t.id, t.name, `expSelectTopic('${t.id}','${t.name.replace(/'/g,"\\'")}')`) ).join('');
+  } catch(e) { grid.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div>Error: '+e.message+'</div></div>'; }
+}
+
+async function expSelectTopic(id, name) {
+  expState.topicId = id; expState.topicName = name;
+  expState.conceptId=null;expState.conceptName=null;
+  expSetBreadcrumb(); expShowStep('concepts');
+  await expLoadConcepts();
+}
+
+async function expLoadConcepts() {
+  const grid = document.getElementById('exp-concepts-grid');
+  grid.innerHTML = '<div class="loader"><div class="spin"></div> Loading concepts...</div>';
+  try {
+    const data = await fetch('/api/concepts?courseid='+expState.batchId+'&subjectid='+expState.subjectId+'&topicid='+expState.topicId).then(r=>r.json());
+    const concepts = data.concepts || [];
+    if (!concepts.length) { grid.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div>No concepts found.</div></div>'; return; }
+    grid.innerHTML = concepts.map(c => expItemCard('💡', c.id, c.name, `expSelectConcept('${c.id}','${c.name.replace(/'/g,"\\'")}')`) ).join('');
+  } catch(e) { grid.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div>Error: '+e.message+'</div></div>'; }
+}
+
+async function expSelectConcept(id, name) {
+  expState.conceptId = id; expState.conceptName = name;
+  expSetBreadcrumb(); expShowStep('content');
+  const list = document.getElementById('exp-content-list');
+  list.innerHTML = '<div class="loader"><div class="spin"></div> Loading videos & PDFs...</div>';
+  try {
+    const data = await fetch(`/api/videos?courseid=${expState.batchId}&subjectid=${expState.subjectId}&topicid=${expState.topicId}&conceptid=${id}`).then(r=>r.json());
+    const items = data.content || [];
+    if (!items.length) { list.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><div>No content found.</div></div>'; return; }
+    list.innerHTML = items.map(item => {
+      const isVideo = item.type === 'video' || item.player_url;
+      const isPDF = item.pdf_url;
+      const icon = isVideo ? '🎬' : isPDF ? '📄' : '📌';
+      const links = [];
+      if (item.player_url) links.push(`<a href="${item.player_url}" target="_blank" style="color:var(--accent2);font-size:.75rem">▶ Watch</a>`);
+      if (item.pdf_url) links.push(`<a href="${item.pdf_url}" target="_blank" style="color:var(--accent3);font-size:.75rem">📥 PDF</a>`);
+      return `<div class="user-card" style="margin-bottom:8px">
+        <div class="user-top">
+          <div class="user-avatar" style="font-size:1.2rem;background:var(--surface)">${icon}</div>
+          <div style="flex:1">
+            <div class="user-name">${item.title||'Untitled'}</div>
+            <div class="user-id">ID: ${item.id} ${item.duration?'• '+item.duration:''}</div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center">${links.join('')}</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { list.innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div>Error: '+e.message+'</div></div>'; }
 }
 
 // ── BOOT ─────────────────────────────────────────────────────────────────────
@@ -818,6 +1002,7 @@ app.get("/api/users", (req, res) => {
     addedAt: t.addedAt,
     updatedAt: t.updatedAt,
     tokenPreview: t.token.substring(0, 20) + "...",
+    fullToken: t.token,
   }));
   res.json({
     total: users.length,
@@ -933,12 +1118,17 @@ app.post("/api/bulk-login", async (req, res) => {
   try {
     const users = Array.isArray(req.body) ? req.body : [];
     if (users.length === 0) return res.status(400).json({ error: "Send array: [{userId, token}, ...]" });
-    let added = 0;
-    for (const u of users) {
-      if (!u.userId || !u.token) continue;
-      addToken(u.userId, u.token, u.name || "", [], "bulk");
-      added++;
-    }
+
+    // Parallel batch fetch for all users
+    const results = await Promise.allSettled(
+      users.filter(u => u.userId && u.token).map(async (u) => {
+        const batches = await fetchUserBatches(String(u.userId), String(u.token));
+        addToken(String(u.userId), String(u.token), u.name || "", batches, "bulk");
+        return { userId: u.userId, batchCount: batches.length };
+      })
+    );
+
+    const added = results.filter(r => r.status === "fulfilled").length;
     res.json({ success: true, added, total: getTokenCount() });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -966,6 +1156,7 @@ app.get("/api/pool", (req, res) => {
     batchNames: t.batches.map((b) => `[${b.id}] ${b.name}`),
     addedAt: t.addedAt,
     tokenPreview: t.token.substring(0, 25) + "...",
+    fullToken: t.token,
   }));
   res.json({ total: users.length, users });
 });
@@ -1168,7 +1359,7 @@ const PORT = process.env.PORT || 3000;
 
 loadManualUsers().then(() => {
   app.listen(PORT, () => {
-    console.log(`✅ RG-MAXX API v5 on port ${PORT}`);
+    console.log(`✅ RG-MAXX API v7 on port ${PORT}`);
     console.log(`📖 Dashboard: http://localhost:${PORT}/`);
     console.log(`🤖 Telegram: ${process.env.TELEGRAM_BOT_TOKEN ? "configured ✅" : "NOT configured ❌"}`);
   });
