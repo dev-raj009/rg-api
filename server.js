@@ -25,6 +25,10 @@ import { startKeepAlive, getTokenHealth } from "./lib/tokenKeepAlive.js";
 import { MANUAL_USERS } from "./users.js";
 
 const app = express();
+
+// ── INIT STATE (Vercel-safe lazy init) ──────────────────────────────────────
+let _initialized = false;
+let _initPromise = null;
 app.use(express.json());
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
@@ -33,6 +37,13 @@ app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.sendStatus(200);
+  next();
+});
+
+// ── LAZY INIT MIDDLEWARE (Vercel-safe) ───────────────────────────────────────
+// Har request se pehle users.js load hota hai (agar nahi hua toh)
+app.use(async (req, res, next) => {
+  try { await ensureInitialized(); } catch (e) { console.error("Init error:", e.message); }
   next();
 });
 
@@ -72,7 +83,7 @@ app.get("/", (req, res) => {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RG-MAXX API v7</title>
+<title>RG-MAXX API v8</title>
 <style>
 :root{
   --bg:#06090f;
@@ -654,7 +665,7 @@ POST /api/login
 
 </div><!-- /main -->
 
-<footer>RG-MAXX API v7 &nbsp;•&nbsp; 24/7 KeepAlive &nbsp;•&nbsp; RG Vikramjeet Platform</footer>
+<footer>RG-MAXX API v8 &nbsp;•&nbsp; 24/7 KeepAlive &nbsp;•&nbsp; RG Vikramjeet Platform</footer>
 
 <script>
 // ── TAB SWITCH ──────────────────────────────────────────────────────────────
@@ -1353,18 +1364,34 @@ app.use((req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// START
+// VERCEL-SAFE STARTUP
+// Vercel = serverless (stateless). app.listen() kaam nahi karta.
+// Isliye lazy init: pehli request aane par users load hote hain.
 // ══════════════════════════════════════════════════════════════════════════════
-const PORT = process.env.PORT || 3000;
 
-loadManualUsers().then(() => {
-  app.listen(PORT, () => {
-    console.log(`✅ RG-MAXX API v7 on port ${PORT}`);
-    console.log(`📖 Dashboard: http://localhost:${PORT}/`);
-    console.log(`🤖 Telegram: ${process.env.TELEGRAM_BOT_TOKEN ? "configured ✅" : "NOT configured ❌"}`);
+async function ensureInitialized() {
+  if (_initialized) return;
+  if (_initPromise) return _initPromise;
+  _initPromise = loadManualUsers().then(() => {
+    _initialized = true;
+    _initPromise = null;
+    // KeepAlive only on non-serverless (local/Railway/Render)
+    if (process.env.PORT) startKeepAlive();
   });
-  // Start 24/7 keepalive AFTER server is up
-  startKeepAlive();
-});
+  return _initPromise;
+}
+
+// Local server start (Vercel pe ye block run nahi hota — export default use karta hai)
+const PORT = process.env.PORT || 3000;
+if (process.env.NODE_ENV !== "production" || process.env.FORCE_LISTEN === "1") {
+  loadManualUsers().then(() => {
+    app.listen(PORT, () => {
+      console.log(`✅ RG-MAXX API v8 on port ${PORT}`);
+      console.log(`📖 Dashboard: http://localhost:${PORT}/`);
+      console.log(`🤖 Telegram: ${process.env.TELEGRAM_BOT_TOKEN ? "configured ✅" : "NOT configured ❌"}`);
+    });
+    startKeepAlive();
+  });
+}
 
 export default app;
