@@ -1,4 +1,4 @@
-// server.js — RG-MAXX API v11.2.2
+// server.js — RG-MAXX API v3.214
 // ✅ FULL token in Telegram logs
 // ✅ Auto batch add from users.js
 // ✅ God-level Android app UI
@@ -73,15 +73,24 @@ async function loadManualUsers() {
 // ══════════════════════════════════════════════════════════════════════════════
 // HEALTH CHECK — Render + Vercel monitoring
 // ══════════════════════════════════════════════════════════════════════════════
-app.get("/api/health", (req, res) => {
-  res.json({
-    status: "ok",
-    version: "v11.1",
-    platform: process.env.VERCEL ? "vercel" : "render/local",
-    tokens: getTokenCount(),
-    uptime: Math.floor(process.uptime()),
-    timestamp: new Date().toISOString(),
-  });
+// /api/health — defined below with full health data
+
+// ══════════════════════════════════════════════════════════════════════════════
+// LAZY INIT — Must be BEFORE all routes
+// ══════════════════════════════════════════════════════════════════════════════
+let _initialized = false;
+let _initPromise = null;
+async function ensureInit() {
+  if (_initialized) return;
+  if (_initPromise) return _initPromise;
+  _initPromise = loadManualUsers()
+    .then(() => { _initialized = true; if (!process.env.VERCEL) startKeepAlive(); })
+    .catch(e => { _initPromise = null; console.error("[Init]", e.message); });
+  return _initPromise;
+}
+app.use(async (req, res, next) => {
+  try { await ensureInit(); } catch(e) {}
+  next();
 });
 
 app.get("/", (req, res) => {
@@ -90,7 +99,7 @@ app.get("/", (req, res) => {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>RG-MAXX API v11.2.2</title>
+<title>RG-MAXX API v3.214</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -912,7 +921,7 @@ function batchCard(b) {
   var phDisplay=b.thumbnail?'style="display:none"':'';
   var expiryHtml=expiry?'<div class="batch-exp"><div class="exp-dot"></div>'+expiry+'</div>':'';
   return '<div class="batch-card">'
-    +thumbHtml+'<div class="batch-thumb-ph" '+phDisplay+'>\u{1F4DA}</div>'
+    +thumbHtml+'<div class="batch-thumb-ph" '+phDisplay+'>📚</div>'
     +'<div class="batch-info">'
     +'<div class="batch-id">ID: '+b.id+'</div>'
     +'<div class="batch-name">'+(b.name||'Unknown Batch')+'</div>'
@@ -1121,7 +1130,7 @@ setInterval(initStats, 30000);
 // ══════════════════════════════════════════════════════════════════════════════
 app.get("/api/status", (req, res) => {
   res.json({
-    status: "RG-MAXX API v11.2.2 Online",
+    status: "RG-MAXX API v3.214 Online",
     version: "v10",
     tokens: getTokenCount(),
     manual_users_defined: MANUAL_USERS.filter(u => u.token && !u.token.startsWith("TOKEN_")).length,
@@ -1497,28 +1506,7 @@ app.use((req, res) => {
 // START — V11: Vercel + Render dual compatible
 // ══════════════════════════════════════════════════════════════════════════════
 
-// ✅ Lazy init — Vercel pe har request pe ready rehta hai, hang nahi hota
-let _initialized = false;
-async function ensureInit() {
-  if (_initialized) return;
-  _initialized = true;
-  await loadManualUsers();
-  // ✅ KeepAlive sirf Render/local pe run hoga (VERCEL=1 env set hoti hai Vercel pe)
-  if (!process.env.VERCEL) {
-    startKeepAlive();
-  }
-}
 
-// ✅ Middleware — har request se pehle init ensure karo
-app.use(async (req, res, next) => {
-  try {
-    await ensureInit();
-    next();
-  } catch (e) {
-    console.error("[Init Error]", e.message);
-    next(); // even if init fails, serve the request
-  }
-});
 
 // ✅ Render / Local: normal server start
 // ✅ Vercel: module export only (no listen) — Vercel khud handle karta hai
@@ -1529,7 +1517,7 @@ if (!IS_VERCEL) {
   // Render / Local mode
   loadManualUsers().then(() => {
     app.listen(PORT, () => {
-      console.log(`✅ RG-MAXX API v11.2.2 on port ${PORT}`);
+      console.log(`✅ RG-MAXX API v3.214 on port ${PORT}`);
       console.log(`📖 Dashboard: http://localhost:${PORT}/`);
       console.log(`🤖 Telegram: ${process.env.TELEGRAM_BOT_TOKEN ? "configured ✅" : "NOT configured ❌"}`);
       console.log(`✨ V11: Vercel + Render dual deploy | Zero crash`);
@@ -1539,7 +1527,7 @@ if (!IS_VERCEL) {
     console.error("❌ Boot failed:", err.message);
     // Render ke liye bhi listen karo even if loadManualUsers fails
     app.listen(PORT, () => {
-      console.log(`⚠️ RG-MAXX API v11.2.2 started (manual users failed to load)`);
+      console.log(`⚠️ RG-MAXX API v3.214 started (manual users failed to load)`);
     });
   });
 } else {

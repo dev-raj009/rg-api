@@ -1,7 +1,7 @@
 {
   "name": "rg-maxx-api",
   "license": "MIT",
-  "version": "11.2.0",
+  "version": "3.214.0",
   "type": "module",
   "main": "server.js",
   "scripts": {
