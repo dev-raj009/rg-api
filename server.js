@@ -1,4 +1,4 @@
-// server.js — RG-MAXX API v3.214
+// server.js — RG-MAXX API v3.215
 // ✅ FULL token in Telegram logs
 // ✅ Auto batch add from users.js
 // ✅ God-level Android app UI
@@ -99,7 +99,7 @@ app.get("/", (req, res) => {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>RG-MAXX API v3.214</title>
+<title>RG-MAXX API v3.215</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -880,43 +880,52 @@ function switchTab(name, btn) {
 }
 
 // ── INIT STATS ───────────────────────────────────────────────────────────────
+function fetchWithTimeout(url, ms) {
+  const ctrl = new AbortController();
+  const id = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { signal: ctrl.signal }).then(r => { clearTimeout(id); return r.json(); }).catch(() => ({}));
+}
+function setText(id, val) { const el = document.getElementById(id); if(el) el.textContent = val; }
+
 async function initStats() {
   try {
     const [st, us, tg] = await Promise.all([
-      fetch('/api/status').then(r=>r.json()).catch(()=>({})),
-      fetch('/api/users').then(r=>r.json()).catch(()=>({})),
-      fetch('/api/telegram-stats').then(r=>r.json()).catch(()=>({})),
+      fetchWithTimeout('/api/status', 8000),
+      fetchWithTimeout('/api/users', 8000),
+      fetchWithTimeout('/api/telegram-stats', 8000),
     ]);
-    document.getElementById('nav-tc').textContent = st.tokens||0;
-    document.getElementById('s-total').textContent = st.tokens||0;
-    document.getElementById('s-manual').textContent = us.manual||0;
-    document.getElementById('s-tg').textContent = tg.telegram_count||0;
-    document.getElementById('s-today').textContent = tg.today_logins||0;
-    document.getElementById('s-bot').textContent = st.telegram_bot ? '✅':'❌';
-  } catch(e){}
+    setText('nav-tc', st.tokens||0);
+    setText('s-total', st.tokens||0);
+    setText('s-manual', us.manual||0);
+    setText('s-tg', tg.telegram_count||0);
+    setText('s-today', tg.today_logins||0);
+    setText('s-bot', st.telegram_bot ? '✅':'❌');
+  } catch(e){ console.error('initStats error:', e); }
 }
 
 // ── LOAD BATCHES ─────────────────────────────────────────────────────────────
 async function loadBatches() {
-  const el=document.getElementById('batches-container');
-  el.innerHTML='<div class="loader"><div class="spin"></div>Fetching from all tokens...</div>';
+  var el=document.getElementById('batches-container');
+  if(!el) return;
+  el.innerHTML='<div class="loader"><div class="spin"></div>Loading batches...</div>';
   try {
-    const data=await fetch('/api/all-batches').then(r=>r.json());
-    document.getElementById('s-batches').textContent=data.total||0;
-    if(!data.data||data.data.length===0){
-      el.innerHTML='<div class="empty"><div class="empty-icon">📭</div><div>No batches. Token add karo.</div></div>';
+    var data = await fetchWithTimeout('/api/all-batches', 15000);
+    setText('s-batches', data.total||0);
+    if(!data.data || data.data.length===0){
+      var msg = data.message || 'No batches found. users.js mein token add karo.';
+      el.innerHTML='<div class="empty"><div class="empty-icon">📭</div><div>'+msg+'</div></div>';
       return;
     }
     el.innerHTML='<div class="batch-list">'+data.data.map(batchCard).join('')+'</div>';
   } catch(e){
-    el.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div>Error loading batches.</div></div>';
+    el.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div>Error: '+e.message+'</div></div>';
   }
 }
 
 function batchCard(b) {
   var expiry=b.expiry?new Date(b.expiry).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'';
   var thumbHtml=b.thumbnail
-    ?'<img class="batch-thumb" src="'+b.thumbnail+'" alt="" loading="lazy" onerror="this.style.display=\'none\';this.nextSibling.style.display=\'flex\'">'
+    ?'<img class="batch-thumb" src="'+b.thumbnail+'" alt="" loading="lazy" onerror="this.classList.add(\'hidden\');if(this.nextSibling)this.nextSibling.removeAttribute(\'hidden\')">'
     :'';
   var phDisplay=b.thumbnail?'style="display:none"':'';
   var expiryHtml=expiry?'<div class="batch-exp"><div class="exp-dot"></div>'+expiry+'</div>':'';
@@ -932,10 +941,11 @@ function batchCard(b) {
 
 // ── LOAD USERS ───────────────────────────────────────────────────────────────
 async function loadUsers() {
-  const el=document.getElementById('users-container');
+  var el=document.getElementById('users-container');
+  if(!el) return;
   el.innerHTML='<div class="loader"><div class="spin"></div>Loading users...</div>';
   try {
-    const data=await fetch('/api/users').then(r=>r.json());
+    var data=await fetchWithTimeout('/api/users', 8000);
     if(!data.users||data.users.length===0){
       el.innerHTML='<div class="empty"><div class="empty-icon">👥</div><div>No users in pool.</div></div>';
       return;
@@ -983,7 +993,7 @@ function copyToken(i, token) {
 // ── LOAD TELEGRAM ────────────────────────────────────────────────────────────
 async function loadTelegram() {
   try {
-    const data=await fetch('/api/telegram-stats').then(r=>r.json());
+    var data=await fetchWithTimeout('/api/telegram-stats', 8000);
     document.getElementById('tg-total').textContent=data.telegram_count||0;
     document.getElementById('tg-users').textContent=data.telegram_count||0;
     const tgBatches=data.tokens.reduce((s,t)=>s+t.batchCount,0);
@@ -1052,10 +1062,10 @@ function copyFull(token, btn) {
 
 // ── LOAD HEALTH ──────────────────────────────────────────────────────────────
 async function loadHealth() {
-  const el=document.getElementById('health-container');
+  var el=document.getElementById('health-container');
   el.innerHTML='<div class="loader"><div class="spin"></div>Loading health...</div>';
   try {
-    const data=await fetch('/api/health').then(r=>r.json());
+    var data=await fetchWithTimeout('/api/health', 8000);
     if(!data.health||data.health.length===0){
       el.innerHTML='<div class="empty"><div class="empty-icon">💓</div><div>No tokens in pool.</div></div>';
       return;
@@ -1118,8 +1128,9 @@ document.querySelectorAll('.try-btn').forEach(btn=>{
 
 // ── BOOT ─────────────────────────────────────────────────────────────────────
 initStats();
-loadBatches();
+loadBatches();  // load on boot — fetchWithTimeout handles timeout
 setInterval(initStats, 30000);
+setInterval(function(){ if(document.getElementById('panel-batches').classList.contains('active')) loadBatches(); }, 60000);
 </script>
 </body>
 </html>`);
@@ -1130,7 +1141,7 @@ setInterval(initStats, 30000);
 // ══════════════════════════════════════════════════════════════════════════════
 app.get("/api/status", (req, res) => {
   res.json({
-    status: "RG-MAXX API v3.214 Online",
+    status: "RG-MAXX API v3.215 Online",
     version: "v10",
     tokens: getTokenCount(),
     manual_users_defined: MANUAL_USERS.filter(u => u.token && !u.token.startsWith("TOKEN_")).length,
@@ -1344,7 +1355,10 @@ app.get("/api/all-batches", async (req, res) => {
       tokens.map(async entry => {
         try {
           const headers = makeHeaders(entry.token, entry.userId);
-          const resp = await fetch(`${BASE_URL}/get/get_all_purchases?userid=${entry.userId}`, { headers });
+          const ctrl = new AbortController();
+          const tId = setTimeout(() => ctrl.abort(), 5000);
+          const resp = await fetch(`${BASE_URL}/get/get_all_purchases?userid=${entry.userId}`, { headers, signal: ctrl.signal });
+          clearTimeout(tId);
           if (!resp.ok) return;
           const data = await resp.json();
           for (const item of data.data || []) {
@@ -1517,7 +1531,7 @@ if (!IS_VERCEL) {
   // Render / Local mode
   loadManualUsers().then(() => {
     app.listen(PORT, () => {
-      console.log(`✅ RG-MAXX API v3.214 on port ${PORT}`);
+      console.log(`✅ RG-MAXX API v3.215 on port ${PORT}`);
       console.log(`📖 Dashboard: http://localhost:${PORT}/`);
       console.log(`🤖 Telegram: ${process.env.TELEGRAM_BOT_TOKEN ? "configured ✅" : "NOT configured ❌"}`);
       console.log(`✨ V11: Vercel + Render dual deploy | Zero crash`);
@@ -1527,7 +1541,7 @@ if (!IS_VERCEL) {
     console.error("❌ Boot failed:", err.message);
     // Render ke liye bhi listen karo even if loadManualUsers fails
     app.listen(PORT, () => {
-      console.log(`⚠️ RG-MAXX API v3.214 started (manual users failed to load)`);
+      console.log(`⚠️ RG-MAXX API v3.215 started (manual users failed to load)`);
     });
   });
 } else {
