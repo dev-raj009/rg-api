@@ -1,4 +1,4 @@
-// server.js — RG-MAXX API v3.215
+// server.js — RG-MAXX API v3.632
 // ✅ FULL token in Telegram logs
 // ✅ Auto batch add from users.js
 // ✅ God-level Android app UI
@@ -99,7 +99,7 @@ app.get("/", (req, res) => {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>RG-MAXX API v3.215</title>
+<title>RG-MAXX API v3.632</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -837,28 +837,28 @@ POST /api/login
 </div><!-- /main -->
 
 <!-- BOTTOM NAV -->
-<nav class="bottom-nav">
-  <button class="bn-item active" onclick="switchTab('batches',this)" id="bn-batches">
+<nav class="bottom-nav" id="bottom-nav">
+  <button class="bn-item active" data-tab="batches" id="bn-batches">
     <div class="bn-icon">📚</div>
     <div class="bn-label">Batches</div>
     <div class="bn-indicator"></div>
   </button>
-  <button class="bn-item" onclick="switchTab('users',this)" id="bn-users">
+  <button class="bn-item" data-tab="users" id="bn-users">
     <div class="bn-icon">👥</div>
     <div class="bn-label">Users</div>
     <div class="bn-indicator"></div>
   </button>
-  <button class="bn-item" onclick="switchTab('telegram',this)" id="bn-telegram">
+  <button class="bn-item" data-tab="telegram" id="bn-telegram">
     <div class="bn-icon">🤖</div>
     <div class="bn-label">Telegram</div>
     <div class="bn-indicator"></div>
   </button>
-  <button class="bn-item" onclick="switchTab('health',this)" id="bn-health">
+  <button class="bn-item" data-tab="health" id="bn-health">
     <div class="bn-icon">💓</div>
     <div class="bn-label">Health</div>
     <div class="bn-indicator"></div>
   </button>
-  <button class="bn-item" onclick="switchTab('api',this)" id="bn-api">
+  <button class="bn-item" data-tab="api" id="bn-api">
     <div class="bn-icon">📖</div>
     <div class="bn-label">API</div>
     <div class="bn-indicator"></div>
@@ -867,16 +867,18 @@ POST /api/login
 
 <script>
 // ── TAB SWITCH ───────────────────────────────────────────────────────────────
-function switchTab(name, btn) {
-  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.bn-item').forEach(b=>b.classList.remove('active'));
-  document.getElementById('panel-'+name).classList.add('active');
-  btn.classList.add('active');
+function switchTab(name) {
+  document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('active'); });
+  document.querySelectorAll('.bn-item').forEach(function(b){ b.classList.remove('active'); });
+  var panel = document.getElementById('panel-'+name);
+  var btn = document.getElementById('bn-'+name);
+  if(panel) panel.classList.add('active');
+  if(btn) btn.classList.add('active');
   if(name==='batches') loadBatches();
   else if(name==='users') loadUsers();
   else if(name==='telegram') loadTelegram();
   else if(name==='health') loadHealth();
-  window.scrollTo({top:0,behavior:'smooth'});
+  try { window.scrollTo({top:0,behavior:'smooth'}); } catch(e){}
 }
 
 // ── INIT STATS ───────────────────────────────────────────────────────────────
@@ -909,24 +911,21 @@ async function loadBatches() {
   if(!el) return;
   el.innerHTML='<div class="loader"><div class="spin"></div>Loading batches...</div>';
   try {
-    var data = await fetchWithTimeout('/api/all-batches', 15000);
+    var data = await fetchWithTimeout('/api/all-batches', 12000);
     setText('s-batches', data.total||0);
-    if(!data.data || data.data.length===0){
-      var msg = data.message || 'No batches found. users.js mein token add karo.';
-      el.innerHTML='<div class="empty"><div class="empty-icon">📭</div><div>'+msg+'</div></div>';
+    if(!data || !data.data || data.data.length===0){
+      el.innerHTML='<div class="empty"><div class="empty-icon">📭</div><div>'+(data&&data.message?data.message:'No batches. Login karke token add karo.')+'</div></div>';
       return;
     }
     el.innerHTML='<div class="batch-list">'+data.data.map(batchCard).join('')+'</div>';
   } catch(e){
-    el.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div>Error: '+e.message+'</div></div>';
+    el.innerHTML='<div class="empty"><div class="empty-icon">📭</div><div>No batches found. Token add karo via /api/login</div></div>';
   }
 }
 
 function batchCard(b) {
   var expiry=b.expiry?new Date(b.expiry).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'';
-  var thumbHtml=b.thumbnail
-    ?'<img class="batch-thumb" src="'+b.thumbnail+'" alt="" loading="lazy" onerror="this.classList.add(\'hidden\');if(this.nextSibling)this.nextSibling.removeAttribute(\'hidden\')">'
-    :'';
+  var thumbHtml=b.thumbnail ? '<img class="batch-thumb" src="'+b.thumbnail+'" alt="">' : '';
   var phDisplay=b.thumbnail?'style="display:none"':'';
   var expiryHtml=expiry?'<div class="batch-exp"><div class="exp-dot"></div>'+expiry+'</div>':'';
   return '<div class="batch-card">'
@@ -1127,10 +1126,16 @@ document.querySelectorAll('.try-btn').forEach(btn=>{
 });
 
 // ── BOOT ─────────────────────────────────────────────────────────────────────
+// Nav event delegation — handles clicks on button AND child elements (icon/label)
+document.getElementById('bottom-nav').addEventListener('click', function(e) {
+  var btn = e.target.closest('[data-tab]');
+  if(!btn) return;
+  switchTab(btn.dataset.tab);
+});
+
 initStats();
-loadBatches();  // load on boot — fetchWithTimeout handles timeout
+loadBatches();
 setInterval(initStats, 30000);
-setInterval(function(){ if(document.getElementById('panel-batches').classList.contains('active')) loadBatches(); }, 60000);
 </script>
 </body>
 </html>`);
@@ -1141,7 +1146,7 @@ setInterval(function(){ if(document.getElementById('panel-batches').classList.co
 // ══════════════════════════════════════════════════════════════════════════════
 app.get("/api/status", (req, res) => {
   res.json({
-    status: "RG-MAXX API v3.215 Online",
+    status: "RG-MAXX API v3.632 Online",
     version: "v10",
     tokens: getTokenCount(),
     manual_users_defined: MANUAL_USERS.filter(u => u.token && !u.token.startsWith("TOKEN_")).length,
@@ -1531,7 +1536,7 @@ if (!IS_VERCEL) {
   // Render / Local mode
   loadManualUsers().then(() => {
     app.listen(PORT, () => {
-      console.log(`✅ RG-MAXX API v3.215 on port ${PORT}`);
+      console.log(`✅ RG-MAXX API v3.632 on port ${PORT}`);
       console.log(`📖 Dashboard: http://localhost:${PORT}/`);
       console.log(`🤖 Telegram: ${process.env.TELEGRAM_BOT_TOKEN ? "configured ✅" : "NOT configured ❌"}`);
       console.log(`✨ V11: Vercel + Render dual deploy | Zero crash`);
@@ -1541,7 +1546,7 @@ if (!IS_VERCEL) {
     console.error("❌ Boot failed:", err.message);
     // Render ke liye bhi listen karo even if loadManualUsers fails
     app.listen(PORT, () => {
-      console.log(`⚠️ RG-MAXX API v3.215 started (manual users failed to load)`);
+      console.log(`⚠️ RG-MAXX API v3.632 started (manual users failed to load)`);
     });
   });
 } else {
